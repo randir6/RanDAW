@@ -22,39 +22,34 @@ test of "audibly overlaid correctly".
 
 ---
 
-## Phase 2 — Split the schedule from the audio
+## Phase 2 — Split the schedule from the audio — DONE
 
-**Goal.** `render()` currently computes *when every note happens* and
-immediately smears it into audio, discarding the schedule. Extract it:
+`polyrhythm/schedule.py` builds the event list; `render_audio()` turns it
+into sound and knows nothing about layers, beat counts or polyrhythm.
 
 ```
-schedule(layers, loops) -> list[Event]      # Event: layer, pulse, pitch, sample, gain
-render_audio(events, ...) -> np.ndarray
+schedule(layers, loops) -> list[Event]   # Event: layer, pulse, semitones, sample, gain
+render_audio(events, total_pulses, samples_per_pulse, sample_rate) -> np.ndarray
 ```
 
-**Why here.** This is the keystone — five later phases are all operations on
-a schedule: beat skipping filters events, drift moves them, scales change
-their pitch, sample sets change their source, MIDI export *is* the event
-list, and the visualiser wants the events rather than the audio. Measured:
-the schedule costs 0.02 ms against 7.5 ms for the audio, ~400× cheaper, so
-a GUI can recompute it on every keystroke.
+`schedule.py` imports no audio library at all, which is the property that
+makes it useful to a visualiser or MIDI exporter. `--dump-schedule` prints
+the event list.
 
-**Already landed ahead of this phase.** Cycle-based tempo
-(`--cycle-duration`) and the render length guard (`--max-duration`) shipped
-early, because a listening test caught the pulse-based tempo silently
-slowing every layer when a new one was added. Between them the LCM
-explosion stopped being a length problem — see NOTES.md, where it now
-survives only as a grid-resolution limit at very high LCMs.
+**Verification.** Six of seven reference renders came back byte-identical.
+The seventh differed on 1 sample in 529,200, by one 16-bit LSB (-90 dBFS),
+because sorting events into time order changed the order of float32
+additions and one sum landed the other side of a rounding boundary. Kept
+the sort: time-ordered events are the right contract, and drift will force
+re-sorting anyway. Worth knowing that "byte-identical" is a strong check
+but floating-point addition is not associative, so a refactor that reorders
+sums will not always survive it.
 
-**Done when.** Audio output is byte-identical to the current renders for
-the same inputs — a refactor you can *prove* rather than hope about — and
-the schedule can be dumped and eyeballed.
+The schedule now has its own checks rather than being inferred from audio.
 
-**Open.** Whether the schedule keeps time in integer pulses (exact, and
-currently the source of the zero-drift property) or seconds (friendlier to
-a browser). Probably pulses internally, seconds at the boundary.
-
----
+**Settled.** Time stays in integer pulses internally — it is exact and it is
+where the zero-drift property comes from — and converts to seconds at the
+boundary, as `--dump-schedule` does.
 
 ## Phase 3 — Beat skipping (arc item 2)
 

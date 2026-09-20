@@ -1,13 +1,7 @@
-import math
-
 import numpy as np
 
 from polyrhythm.audio import load_sample, pitch_shift
-from polyrhythm.layer import Layer
-
-
-def lcm_of_beats(layers: list[Layer]) -> int:
-    return math.lcm(*(layer.beats for layer in layers))
+from polyrhythm.schedule import Event
 
 
 def _add_wrapped(buf: np.ndarray, start: int, audio: np.ndarray) -> None:
@@ -23,35 +17,27 @@ def _add_wrapped(buf: np.ndarray, start: int, audio: np.ndarray) -> None:
         pos = 0
 
 
-def render(
-    layers: list[Layer], loops: int, samples_per_pulse: int, sample_rate: int
+def render_audio(
+    events: list[Event], total_pulses: int, samples_per_pulse: int, sample_rate: int
 ) -> np.ndarray:
-    """Render all layers to a single mixed-down float32 array.
+    """Mix a schedule down to a single float32 array.
 
-    The shared timeline is divided into pulses: the finest grid on which
-    every layer's beats land. A layer with `beats` beats fires once every
-    (lcm_beats // beats) pulses, so all layers complete one full loop in
-    the same wall-clock span -- that's what makes it a polyrhythm rather
-    than beats of different lengths playing side by side.
+    Knows nothing about layers, beat counts or polyrhythm -- only where each
+    note lands and how it should sound. All of that lives in schedule().
     """
-    lcm_beats = lcm_of_beats(layers)
-    total_samples = loops * lcm_beats * samples_per_pulse
+    mix = np.zeros(total_pulses * samples_per_pulse, dtype=np.float32)
 
-    mix = np.zeros(total_samples, dtype=np.float32)
+    samples: dict[str, np.ndarray] = {}
+    voices: dict[tuple[str, int, float], np.ndarray] = {}
 
-    for layer in layers:
-        sample = load_sample(layer.sample_path, sample_rate) * layer.gain
-        shifted = {semitones: pitch_shift(sample, semitones) for semitones in set(layer.notes)}
-        pulses_per_beat = lcm_beats // layer.beats
+    for event in events:
+        if event.sample_path not in samples:
+            samples[event.sample_path] = load_sample(event.sample_path, sample_rate)
 
-        for loop_idx in range(loops):
-            for beat_idx in range(layer.beats):
-                occurrence = loop_idx * layer.beats + beat_idx
-                pulse_idx = loop_idx * lcm_beats + beat_idx * pulses_per_beat
-                _add_wrapped(
-                    mix,
-                    pulse_idx * samples_per_pulse,
-                    shifted[layer.notes[occurrence % len(layer.notes)]],
-                )
+        voice = (event.sample_path, event.semitones, event.gain)
+        if voice not in voices:
+            voices[voice] = pitch_shift(samples[event.sample_path] * event.gain, event.semitones)
+
+        _add_wrapped(mix, event.pulse * samples_per_pulse, voices[voice])
 
     return mix

@@ -17,6 +17,9 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from polyrhythm.layer import Layer
+from polyrhythm.schedule import schedule
+
 SR = 44100
 PULSE = 0.15
 QUANTUM = 1 / 32768  # output is 16-bit PCM; tolerances can't be tighter
@@ -193,6 +196,36 @@ check("adding a layer leaves the existing layers' timing untouched",
       kick_hits <= set(np.nonzero(two)[0].tolist())
       and kick_hits <= set(np.nonzero(three)[0].tolist()),
       "3-beat layer lands identically with and without a 5-beat layer present")
+
+# --- Schedule ---------------------------------------------------------------
+# The schedule is what later phases operate on -- skipping filters it, drift
+# moves it, MIDI exports it, the visualiser draws it -- so check it directly
+# rather than only inferring it from the audio it produced.
+sched_layers = [
+    Layer(beats=3, notes=[0, 3, 7, 10, 5], sample_path="a.wav", gain=0.5),
+    Layer(beats=4, notes=[0, -5], sample_path="b.wav", gain=0.8),
+]
+events = schedule(sched_layers, loops=2)
+
+check("schedule emits one event per layer beat per loop",
+      len(events) == 2 * (3 + 4), f"{len(events)} events")
+check("schedule comes back in time order",
+      all(a.pulse <= b.pulse for a, b in zip(events, events[1:])))
+
+# LCM(3,4)=12, so the 3-beat layer steps 4 pulses and the 4-beat layer 3.
+want = ({(0, c * 12 + j * 4) for c in range(2) for j in range(3)}
+        | {(1, c * 12 + j * 3) for c in range(2) for j in range(4)})
+check("every event lands on its own layer's beat grid",
+      {(e.layer, e.pulse) for e in events} == want)
+
+# Occurrences 0..5 of the 3-beat layer index a 5-note sequence as 0,1,2,3,4,0.
+first_layer = [e.semitones for e in events if e.layer == 0]
+check("note sequence phases across loops in the schedule itself",
+      first_layer == [0, 3, 7, 10, 5, 0], f"{first_layer}")
+
+check("events carry their layer's sample and gain",
+      all(e.sample_path == "a.wav" and e.gain == 0.5 for e in events if e.layer == 0)
+      and all(e.sample_path == "b.wav" and e.gain == 0.8 for e in events if e.layer == 1))
 
 print()
 if failures:

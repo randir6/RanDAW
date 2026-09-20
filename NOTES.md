@@ -62,6 +62,15 @@ Not worth doing until someone actually wants six coprime layers.
 
 ## Decisions worth remembering
 
+- **The schedule is the core, audio is one consumer.** `schedule()` produces
+  the event list and `render_audio()` sounds it. Beat skipping filters the
+  list, drift moves it, MIDI exports it and a visualiser would draw it, so
+  none of those need to touch the audio path. Measured before splitting: the
+  schedule costs ~0.02 ms against ~7.5 ms for the audio.
+- **Events sort into time order, at the cost of exact byte-identity.**
+  Reordering float32 additions moved one sample of 529,200 by a single
+  16-bit LSB (-90 dBFS) in one reference render. Accepted deliberately.
+
 - **Tempo is the cycle, not the pulse.** `--cycle-duration` sets how long one
   full polyrhythm cycle lasts, and every layer divides that span. An earlier
   `--bpm` set the *pulse* instead, which meant adding a 5-beat layer took the

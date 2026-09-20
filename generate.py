@@ -6,7 +6,8 @@ import numpy as np
 import soundfile as sf
 
 from polyrhythm.layer import parse_layer_arg
-from polyrhythm.render import lcm_of_beats, render
+from polyrhythm.render import render_audio
+from polyrhythm.schedule import lcm_of_beats, schedule
 
 DEFAULT_CYCLE_DURATION = 2.0
 DEFAULT_MAX_DURATION = 120.0
@@ -54,6 +55,11 @@ def build_parser():
         f"Default: {DEFAULT_MAX_DURATION:.0f}",
     )
     parser.add_argument("--sample-rate", type=int, default=44100)
+    parser.add_argument(
+        "--dump-schedule",
+        action="store_true",
+        help="Print every note the render will place, then render as usual.",
+    )
     return parser
 
 
@@ -106,10 +112,22 @@ def main():
     if missing:
         parser.error("sample file not found: " + ", ".join(missing))
 
+    events = schedule(args.layers, args.loops)
+
+    if args.dump_schedule:
+        print(f"{len(events)} events over {args.loops} x {cycle_duration:.3f}s cycle")
+        print(f"{'time':>9}  {'pulse':>6}  {'layer':>5}  {'semis':>5}  gain  sample")
+        for event in events:
+            seconds = event.pulse * samples_per_pulse / args.sample_rate
+            print(
+                f"{seconds:9.4f}  {event.pulse:6d}  {event.layer:5d}  {event.semitones:+5d}  "
+                f"{event.gain:.2f}  {Path(event.sample_path).name}"
+            )
+
     try:
-        mix = render(
-            layers=args.layers,
-            loops=args.loops,
+        mix = render_audio(
+            events=events,
+            total_pulses=args.loops * lcm_beats,
             samples_per_pulse=samples_per_pulse,
             sample_rate=args.sample_rate,
         )

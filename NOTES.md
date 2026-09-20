@@ -60,6 +60,39 @@ Fixable if it ever bites, by computing each event's position directly from
 its fractional position in the cycle instead of snapping to a pulse grid.
 Not worth doing until someone actually wants six coprime layers.
 
+## Backlog
+
+Ideas deliberately not built, kept here so they are not lost. Nothing in
+this list is committed to, and none of it is in the phase plan.
+
+- **Note sequence that advances only on sounding beats.** Currently a note
+  belongs to its beat position, so skipping a beat silences that note. The
+  alternative advances the sequence only when a beat sounds, so every note
+  is heard in turn and skipping becomes a rhythmic mask over a melody that
+  keeps running. Both are musically useful and they are genuinely different.
+  Would need the note counter in `schedule()` to change, not just a filter,
+  so probably a per-layer choice like `notes_follow=beats|hits`.
+- **One-shot render mode.** Tails currently wrap so files loop seamlessly,
+  which means a render opens with the tail of its own last note. Fine for
+  loops, wrong for a one-shot. Needs a flag.
+- **Auto-normalise option.** Levels are set by hand on purpose, but a
+  `--normalise` that scales the finished mix to just under 0 dB would save
+  dialling gains in by trial and error.
+- **Sample-accurate event placement.** Beats snap to an integer pulse grid,
+  which loses resolution at very high LCMs (see above). Computing each
+  event's position from its fractional position in the cycle would remove
+  the limit entirely.
+- **Stereo.** Everything is mono. Panning is an obvious per-layer parameter
+  and would want settling before per-layer effects land.
+- **Explicit output bit depth.** 16-bit PCM is currently soundfile's default
+  rather than a stated choice.
+- **Per-note velocity.** Gain is per-layer. Per-event gain would allow
+  accents, and `Event` already carries a gain field that could vary.
+- **A `beat` field on `Event`.** Would make `--dump-schedule` readable
+  without mental arithmetic, and a visualiser will want it.
+- **BPM referenced to a named layer.** `--cycle-duration` is the honest
+  control, but "put layer 2 at 120 bpm" is how a musician would ask.
+
 ## Decisions worth remembering
 
 - **Skipping a beat silences its note; it does not shuffle the melody up.**
@@ -68,12 +101,7 @@ Not worth doing until someone actually wants six coprime layers.
   plays `0` and `24`, not `0` and `12`. Like muting a step on a drum machine
   rather than deleting it.
 
-  The alternative is real and might be worth having later: advance the note
-  sequence only on beats that sound, so every note gets heard in turn and
-  skipping becomes a rhythmic mask over a melody that keeps running. That
-  needs the note counter to change rather than just a filter, so it was not
-  free, and the current behaviour is the one that leaves existing renders
-  untouched. Ask for it if the sparse melodies feel wrong.
+  Both behaviours are useful; the other one is on the backlog below.
 - **Active beats count from 1**, as musicians count, and convert to 0-based
   indices once at parse time. Phase 5's scale degrees will be 1-indexed for
   the same reason.

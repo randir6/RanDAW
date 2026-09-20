@@ -104,22 +104,39 @@ apart. That refactor is what makes a third front end cheap.
 
 ---
 
-## Phase 5 — Scales and keys (arc item 6)
+## Phase 5 — Scales and keys (arc item 6) — DONE
 
-**Goal.** Notes as scale degrees against a named scale and key, so swapping
-the scale re-harmonises a layer without rewriting its notes. Raw semitones
-stay available for percussion.
+A layer states pitches as `notes` (semitones) OR `degrees` (against a named
+scale). `configs/scales.toml` re-harmonises on one word.
 
-**Why here.** Highest musical payoff per line of code, and much more
-pleasant to drive from a config file than a CLI string. Needs phase 4 first
-for that reason.
+```toml
+scale = "dorian"       # global default
+[[layer]]
+degrees = [1, 3, 5, 8]
+```
 
-**Done when.** The same layer sounds coherently different across scales, and
-degrees and semitones can coexist across layers in one piece.
+14 scales in `polyrhythm/scales.py`: the seven modes, two altered minors,
+two pentatonics, blues, whole tone, chromatic.
 
-**Open.** Degrees are 1-indexed as musicians count them (your `1,3,5,6`).
-What degree 8+ means — almost certainly the octave above degree 1. Whether
-key/scale is per-layer, global with per-layer override, or both.
+**Settled: two fields, not one that changes meaning.** Had `notes` been
+reinterpreted as degrees whenever a scale was present, adding a global scale
+would silently have rewritten every drum layer's numbers. Separate fields
+make a semitone layer provably immune, which is checked.
+
+**Settled: `root` is a semitone offset, not a key name.** These are pitch
+shifts applied to a sample whose own pitch is unknown, so calling something
+"the key of D" would be a fiction. Naming keys honestly needs samples to
+declare their natural pitch — a backlog item, not this phase.
+
+**Settled: degrees are 1-based**, consistent with active beats. Degree 8 is
+the octave above degree 1, and degrees below 1 run downwards — degree 0 is
+one step under the root. Both fall out of Python's floor division rather
+than needing a special case.
+
+**Verification.** Degrees resolve to semitones at the layer boundary, so
+nothing downstream knows scales exist: `degrees=1,3,5,8:scale=major` renders
+byte-identically to `notes=0,4,7,12`, and all seven older reference renders
+plus the four phase-4 configs are unchanged.
 
 ---
 

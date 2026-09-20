@@ -26,6 +26,7 @@ import numpy as np
 import soundfile as sf
 
 from polyrhythm.layer import Layer
+from polyrhythm.scales import SCALES, degree_to_semitones
 from polyrhythm.schedule import schedule
 
 SR = 44100
@@ -425,6 +426,97 @@ no_out = write_config("noout.toml", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = [0
 r = run("--config", str(no_out))
 check("a config without an output path says so",
       r.returncode == 2 and "need --out" in (r.stdout + r.stderr))
+
+# --- Scales and degrees -----------------------------------------------------
+# Degrees are 1-based as musicians count them, so in major 1/3/5 must be the
+# root, a major third and a perfect fifth: 0, 4 and 7 semitones.
+check("degree 1/3/5 in major is a major triad",
+      [degree_to_semitones(d, "major") for d in (1, 3, 5)] == [0, 4, 7])
+check("degree 1/3/5 in minor flattens the third",
+      [degree_to_semitones(d, "minor") for d in (1, 3, 5)] == [0, 3, 7])
+
+# Past the end of a scale, degrees wrap into the next octave; below 1 they
+# run downwards. Both fall out of floor division rather than special cases.
+check("degree 8 is the octave above degree 1",
+      degree_to_semitones(8, "major") == 12)
+check("degree 15 is two octaves up",
+      degree_to_semitones(15, "major") == 24)
+check("degree 0 is one step BELOW the root",
+      degree_to_semitones(0, "major") == -1, "the leading tone underneath")
+check("degree -6 is the octave below",
+      degree_to_semitones(-6, "major") == -12)
+
+# Scales of other lengths must wrap on their own length, not on seven.
+check("a five-note scale wraps after five degrees",
+      degree_to_semitones(6, "minor_pentatonic") == 12
+      and degree_to_semitones(1, "minor_pentatonic") == 0)
+
+check("root transposes every degree equally",
+      [degree_to_semitones(d, "minor", root=3) for d in (1, 3, 5)] == [3, 6, 10])
+
+check("every named scale starts on its root and stays inside an octave",
+      all(iv[0] == 0 and all(0 <= x < 12 for x in iv) and iv == sorted(set(iv))
+          for iv in SCALES.values()),
+      f"{len(SCALES)} scales")
+
+# Degrees resolve to semitones at the layer boundary, so the same piece
+# written either way must produce identical audio.
+by_degree = render([f"4::{tmp}/sine440.wav:degrees=1,3,5,8:scale=major"], 1, "deg.wav",
+                   "--cycle-duration", "2.0")
+by_semitone = render([f"4:0,4,7,12:{tmp}/sine440.wav"], 1, "semi.wav",
+                     "--cycle-duration", "2.0")
+check("degrees and the semitones they resolve to render identically",
+      np.array_equal(by_degree, by_semitone), "major 1,3,5,8 == 0,4,7,12")
+
+# Swapping the scale must change the audio and nothing else.
+minor_ver = render([f"4::{tmp}/sine440.wav:degrees=1,3,5,8:scale=minor"], 1, "min.wav",
+                   "--cycle-duration", "2.0")
+check("changing the scale changes the pitches",
+      not np.array_equal(by_degree, minor_ver) and len(by_degree) == len(minor_ver))
+
+for label, args, expect in [
+    ("degrees without a scale are refused",
+     ["--layer", f"4::{impulse}:degrees=1,3"], "degrees need a scale"),
+    ("an unknown scale lists the real ones",
+     ["--layer", f"4::{impulse}:degrees=1:scale=klingon"], "unknown scale"),
+    ("notes and degrees together are refused",
+     ["--layer", f"4:0:{impulse}:degrees=1:scale=major"], "not both"),
+    ("neither notes nor degrees is refused",
+     ["--layer", f"4::{impulse}"], "either notes"),
+    ("a scale alongside plain semitones is flagged",
+     ["--layer", f"4:0,4:{impulse}:scale=major"], "use degrees instead"),
+]:
+    r = run(*args, "--loops", "1", "--out", str(tmp / "err.wav"))
+    check(label, r.returncode == 2 and expect in (r.stdout + r.stderr), f"exit {r.returncode}")
+
+# In a config: a global scale applies to layers written in degrees, and must
+# leave layers written in semitones completely alone.
+scale_cfg = write_config("scale.toml", f"""
+cycle_duration = 2.0
+loops = 1
+scale = "minor"
+
+[[layer]]
+beats = 2
+degrees = [1, 3]
+sample = "../impulse.wav"
+
+[[layer]]
+beats = 2
+notes = [0, 3]
+sample = "../impulse.wav"
+""")
+layers_cfg, _ = __import__("polyrhythm.config", fromlist=["load_config"]).load_config(str(scale_cfg))
+check("a global scale reaches the layer written in degrees",
+      layers_cfg[0].notes == [0, 3], f"minor 1,3 -> {layers_cfg[0].notes}")
+check("a global scale leaves a semitone layer untouched",
+      layers_cfg[1].notes == [0, 3], "notes pass through unchanged")
+
+bad_scale_cfg = write_config("badscale.toml",
+    'loops = 1\nscale = "klingon"\n[[layer]]\nbeats = 1\ndegrees = [1]\nsample = "../impulse.wav"\n')
+r = run("--config", str(bad_scale_cfg), "--out", str(tmp / "err.wav"))
+check("a config naming an unknown scale is refused",
+      r.returncode == 2 and "unknown scale" in (r.stdout + r.stderr))
 
 print()
 if failures:

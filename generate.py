@@ -53,11 +53,14 @@ def build_parser():
         # parsing and validation already done.
         type=parse_layer_arg,
         # Shown in --help and error messages in place of "LAYER".
-        metavar="BEATS:NOTES:SAMPLE[:gain=G][:active=B,...]",
+        metavar="BEATS:NOTES:SAMPLE[:opt=v...]",
         help="One layer, e.g. '3:0,3,5:kick.wav' or '13:0:tom.wav:active=3,5,8'. "
-        "Repeat for more layers. Notes are semitone offsets and loop over the "
-        "layer's own beats. gain= defaults to 1.0 (unity). active= lists which "
-        "of the layer's own beats sound, counting from 1; all of them by default.",
+        "Repeat for more layers. Notes are semitone offsets looping over the "
+        "layer's own beats. Options, in any order: gain= (default 1.0), "
+        "active= which beats sound counting from 1 (default all), degrees= "
+        "with scale= to give pitches as scale degrees instead of semitones "
+        "(leave the notes field empty, e.g. '8::pluck.wav:degrees=1,3,5:"
+        "scale=dorian'), and root= to transpose by semitones.",
     )
     # These default to None rather than to their real defaults so that main()
     # can tell "the user asked for this" from "nothing was said", which is what

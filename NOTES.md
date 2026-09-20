@@ -94,6 +94,10 @@ Design notes from thinking it through, so the work does not start cold:
 
 ### Smaller items
 
+- **Samples declaring their own root pitch.** Would let `key = "D"` mean
+  something real rather than assuming every sample is a C, and would make
+  `root` a musical setting rather than an offset.
+
 - **Note sequence that advances only on sounding beats.** Currently a note
   belongs to its beat position, so skipping a beat silences that note. The
   alternative advances the sequence only when a beat sounds, so every note
@@ -123,6 +127,17 @@ Design notes from thinking it through, so the work does not start cold:
   control, but "put layer 2 at 120 bpm" is how a musician would ask.
 
 ## Decisions worth remembering
+
+- **Pitches are `notes` (semitones) or `degrees` (against a scale), never one
+  field that changes meaning.** A single field reinterpreted whenever a scale
+  was present would have let a global scale silently rewrite every drum
+  layer's numbers. Two fields make a semitone layer provably immune.
+- **`root` is a semitone offset, not a key name.** We pitch-shift samples
+  whose own pitch is unknown, so "the key of D" would be a fiction. Naming
+  keys honestly needs samples to declare their natural pitch.
+- **Degrees resolve to semitones in `make_layer`**, so schedule, render and
+  the event list never learn that scales exist. The whole feature lives at
+  the boundary.
 
 - **Skipping a beat silences its note; it does not shuffle the melody up.**
   A layer's note sequence is indexed by beat position whether or not that

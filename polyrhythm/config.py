@@ -30,6 +30,7 @@ import tomllib
 from pathlib import Path
 
 from polyrhythm.layer import Layer, make_layer
+from polyrhythm.scales import SCALES, scale_names
 
 # Listing the permitted keys lets us reject typos. Without this, writing
 # `cycle_durations = 2.0` would be silently ignored and you would spend ten
@@ -41,9 +42,11 @@ TOP_LEVEL_KEYS = {
     "out",
     "sample_rate",
     "max_duration",
+    "scale",
+    "root",
     "layer",
 }
-LAYER_KEYS = {"beats", "notes", "sample", "gain", "active"}
+LAYER_KEYS = {"beats", "notes", "degrees", "sample", "gain", "active", "scale", "root"}
 
 # Settings a config may carry, and the type each must be. Used for both the
 # whitelist check and the type check, so they can't disagree.
@@ -125,6 +128,23 @@ def load_config(path: str) -> tuple[list[Layer], dict]:
             )
         settings[key] = value
 
+    # `scale` and `root` at the top level are defaults for any layer written
+    # in degrees. They are handled apart from the settings above because they
+    # are consumed here, when layers are built, rather than passed on to the
+    # renderer -- degrees become semitones before anything downstream sees
+    # them. A layer stating pitches as `notes` ignores both entirely, which
+    # is what stops a global scale from quietly reinterpreting the drums.
+    default_scale = data.get("scale")
+    if default_scale is not None and not isinstance(default_scale, str):
+        raise ConfigError(f"{path}: scale must be a name, got {default_scale!r}")
+    if default_scale is not None and default_scale not in SCALES:
+        raise ConfigError(
+            f"{path}: unknown scale {default_scale!r}; expected one of: {scale_names()}"
+        )
+    default_root = data.get("root", 0)
+    if isinstance(default_root, bool) or not isinstance(default_root, int):
+        raise ConfigError(f"{path}: root must be a whole number of semitones, got {default_root!r}")
+
     # Paths are resolved relative to the CONFIG FILE, not the working
     # directory, so a config and its samples can be moved together and still
     # work from anywhere. `out` follows the same rule for consistency.
@@ -146,19 +166,34 @@ def load_config(path: str) -> tuple[list[Layer], dict]:
                 f"{where}: unknown key(s) {', '.join(sorted(unknown))}. "
                 f"Expected any of: {', '.join(sorted(LAYER_KEYS))}"
             )
-        missing = {"beats", "notes", "sample"} - set(entry)
+        missing = {"beats", "sample"} - set(entry)
         if missing:
             raise ConfigError(f"{where}: missing {', '.join(sorted(missing))}")
+        if "notes" not in entry and "degrees" not in entry:
+            raise ConfigError(f"{where}: missing notes (semitones) or degrees (with a scale)")
 
         if isinstance(entry["beats"], bool) or not isinstance(entry["beats"], int):
             raise ConfigError(f"{where}: beats must be a whole number, got {entry['beats']!r}")
         if not isinstance(entry["sample"], str):
             raise ConfigError(f"{where}: sample must be a path string")
 
-        notes = _require_int_list(entry["notes"], f"{where}: notes")
+        notes = _require_int_list(entry["notes"], f"{where}: notes") if "notes" in entry else None
+        degrees = (
+            _require_int_list(entry["degrees"], f"{where}: degrees") if "degrees" in entry else None
+        )
         active = (
             _require_int_list(entry["active"], f"{where}: active") if "active" in entry else None
         )
+
+        # A layer's own scale wins over the file-wide one. The global default
+        # reaches a layer only when that layer is written in degrees, so a
+        # drum layer using notes is never touched by it.
+        scale = entry.get("scale", default_scale if degrees is not None else None)
+        if scale is not None and not isinstance(scale, str):
+            raise ConfigError(f"{where}: scale must be a name, got {scale!r}")
+        root = entry.get("root", default_root)
+        if isinstance(root, bool) or not isinstance(root, int):
+            raise ConfigError(f"{where}: root must be a whole number of semitones, got {root!r}")
 
         gain = entry.get("gain", 1.0)
         if isinstance(gain, bool) or not isinstance(gain, (int, float)):
@@ -169,8 +204,11 @@ def load_config(path: str) -> tuple[list[Layer], dict]:
             layers.append(
                 make_layer(
                     beats=entry["beats"],
-                    notes=notes,
                     sample_path=str(base / entry["sample"]),
+                    notes=notes,
+                    degrees=degrees,
+                    scale=scale,
+                    root=root,
                     gain=float(gain),
                     active=active,
                 )

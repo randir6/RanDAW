@@ -167,16 +167,32 @@ for label, args, code, expect in [
     ("malformed layer explains the format", ["--layer", "3:0,3,5", "--loops", "1"], 2, "BEATS:NOTES:SAMPLE_PATH"),
     ("beats=0 is rejected", ["--layer", f"0:0:{impulse}", "--loops", "1"], 2, "beat count must be >= 1"),
     ("bad gain is reported", ["--layer", f"1:0:{impulse}:gain=x", "--loops", "1"], 2, "not a number"),
-    ("--bpm 0 is rejected", ["--layer", f"1:0:{impulse}", "--loops", "1", "--bpm", "0"], 2, "must be > 0"),
+    ("--cycle-duration 0 is rejected", ["--layer", f"1:0:{impulse}", "--loops", "1", "--cycle-duration", "0"], 2, "must be > 0"),
+    ("an over-long render is refused with its length", ["--layer", f"3:0:{impulse}", "--layer", f"4:0:{impulse}", "--loops", "100", "--cycle-duration", "5"], 2, "over the"),
 ]:
     r = run(*args, "--out", str(tmp / "err.wav"))
     output = r.stdout + r.stderr
     check(label, r.returncode == code and expect in output, f"exit {r.returncode}")
 
-# --bpm and --pulse-duration are two spellings of the same number.
-by_bpm = render([f"1:0:{impulse}"], 1, "bpm.wav", "--bpm", "60")
-by_secs = render([f"1:0:{impulse}"], 1, "secs.wav", "--pulse-duration", "1.0")
-check("--bpm 60 == --pulse-duration 1.0", len(by_bpm) == len(by_secs) == SR, f"{len(by_bpm)} samples")
+# --- Cycle-based tempo ------------------------------------------------------
+# The cycle is the span every layer divides into its own beat count, so adding
+# a layer must subdivide that span rather than stretch it. Fixing the PULSE
+# instead makes the cycle grow with the LCM, which silently slows every layer
+# already present -- the bug this check exists to catch.
+CYCLE = 2.0
+cycle_samples = int(CYCLE * SR)
+two = render([f"3:0:{impulse}:gain=0.4", f"4:0:{impulse}:gain=0.4"], 2, "cyc2.wav",
+             "--cycle-duration", str(CYCLE))
+three = render([f"3:0:{impulse}:gain=0.3", f"4:0:{impulse}:gain=0.3", f"5:0:{impulse}:gain=0.3"],
+               2, "cyc3.wav", "--cycle-duration", str(CYCLE))
+check("--cycle-duration renders exactly the requested span",
+      len(two) == len(three) == 2 * cycle_samples, f"{len(two)} samples for 2 x {CYCLE}s")
+
+kick_hits = {int(round((c + j / 3) * cycle_samples)) for c in range(2) for j in range(3)}
+check("adding a layer leaves the existing layers' timing untouched",
+      kick_hits <= set(np.nonzero(two)[0].tolist())
+      and kick_hits <= set(np.nonzero(three)[0].tolist()),
+      "3-beat layer lands identically with and without a 5-beat layer present")
 
 print()
 if failures:

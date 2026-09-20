@@ -39,16 +39,16 @@ list, and the visualiser wants the events rather than the audio. Measured:
 the schedule costs 0.02 ms against 7.5 ms for the audio, ~400× cheaper, so
 a GUI can recompute it on every keystroke.
 
-Also in scope: the **render length guard**. LCM-exact stays the default
-(the loop genuinely resolves), but past a threshold — say 60 seconds — the
-tool reports the length and refuses without an explicit go-ahead, with the
-option to render a shorter file instead. Truncating means the file is no
-longer a complete cycle: it will still loop seamlessly, but at a musically
-arbitrary point. Worth saying out loud when it happens.
+**Already landed ahead of this phase.** Cycle-based tempo
+(`--cycle-duration`) and the render length guard (`--max-duration`) shipped
+early, because a listening test caught the pulse-based tempo silently
+slowing every layer when a new one was added. Between them the LCM
+explosion stopped being a length problem — see NOTES.md, where it now
+survives only as a grid-resolution limit at very high LCMs.
 
-**Done when.** Audio output is byte-identical to phase 1 for the same
-inputs — a refactor you can *prove* rather than hope about — and the
-schedule can be dumped and eyeballed. Length guard covered by QA.
+**Done when.** Audio output is byte-identical to the current renders for
+the same inputs — a refactor you can *prove* rather than hope about — and
+the schedule can be dumped and eyeballed.
 
 **Open.** Whether the schedule keeps time in integer pulses (exact, and
 currently the source of the zero-drift property) or seconds (friendlier to

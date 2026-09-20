@@ -16,10 +16,14 @@ generate, export, drag into whatever consumes it.
 - Each layer's note sequence loops independently over its own beat count,
   and a layer's sample set cycles the same way — so note sequence, sample
   sequence and beat count all phase against each other.
-- LCM resolution is unforgiving of coprime beat counts: 3/4/5/7/11 resolves
-  only after 9.6 minutes, 3/4/5/7/11/13 after 2.1 hours. Full-cycle renders
-  stay the default, but past a threshold the tool asks before generating
-  and can render a shorter file instead.
+- Tempo is set by the cycle duration — the span every layer divides into its
+  own beat count — so adding a layer subdivides that span rather than
+  stretching it. Fixing the pulse instead would make the cycle grow with the
+  LCM and silently slow every layer already playing.
+- Coprime beat counts therefore cost grid resolution rather than length:
+  their LCM sets how finely the cycle must be subdivided, and once that
+  approaches the sample rate the beats can no longer be placed exactly. The
+  tool says so when it happens.
 
 ## Planned capability arc (not all in v1)
 1. N layers, not just 2 — data model should treat "2 layers" as a config

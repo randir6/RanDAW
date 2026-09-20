@@ -46,7 +46,32 @@ Consequence: adding layers or stacking overlapping tails can clip, and the fix
 is to dial gains down yourself. The clipping warning suggests a specific value
 that resolves it.
 
+### Very high LCMs lose grid resolution
+Beats land on an integer grid of pulses, `LCM` of them per cycle. A cycle of
+C seconds at sample rate R therefore needs `LCM <= C * R` for at least one
+sample per pulse, and comfortably fewer than that to place beats accurately.
+
+Measured at a 2s cycle, 44.1 kHz: 3/4/5/7/11 (LCM 4620) renders a 1.990s
+cycle, 0.5% off and inaudible. Adding a 13 (LCM 60060) leaves 1.47 samples
+per pulse, which rounds to 1 and collapses the cycle to 1.36s — the tool
+warns when the rounded cycle differs from the requested one by over 1%.
+
+Fixable if it ever bites, by computing each event's position directly from
+its fractional position in the cycle instead of snapping to a pulse grid.
+Not worth doing until someone actually wants six coprime layers.
+
 ## Decisions worth remembering
+
+- **Tempo is the cycle, not the pulse.** `--cycle-duration` sets how long one
+  full polyrhythm cycle lasts, and every layer divides that span. An earlier
+  `--bpm` set the *pulse* instead, which meant adding a 5-beat layer took the
+  LCM from 12 to 60 and slowed a 120 bpm kick to 24 bpm without changing any
+  setting the user had touched. Caught by ear, not by the tests — there is
+  now a regression check that a layer's onsets are unchanged by the addition
+  of another layer. `--pulse-duration` survives as the low-level control.
+- **Renders refuse to exceed `--max-duration`** (default 120s) and say how
+  long they would have been. Mostly reachable via `--pulse-duration` now,
+  since cycle-based tempo makes length explicit.
 
 - **Loop tails wrap.** A note whose tail runs past the end of the render wraps
   around to the start, so the file loops without a click. The trade: the very

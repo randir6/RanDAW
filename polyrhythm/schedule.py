@@ -118,6 +118,22 @@ def schedule(layers: list[Layer], loops: int) -> list[Event]:
         for layer_idx, layer in enumerate(layers)
         for loop_idx in range(loops)
         for beat_idx in range(layer.beats)
+        # Beat skipping, and the entire cost of it. A comprehension can end
+        # with an `if`, which keeps only the items that pass -- so an inactive
+        # beat simply never becomes an event.
+        #
+        # Note what this does NOT do: it doesn't touch the note counter above.
+        # The note a beat plays is decided by its position in the sequence
+        # whether or not it sounds, so silencing beat 2 silences that beat's
+        # note rather than sliding the next note into its place. A layer's
+        # melody therefore stays locked to its beats, like muting a step on a
+        # drum machine rather than deleting it.
+        #
+        # The alternative -- advancing the note sequence only on beats that
+        # sound, so every note gets heard in turn -- is a real musical choice
+        # and would need the counter to change, not just a filter here. See
+        # NOTES.md.
+        if layer.active_beats is None or beat_idx in layer.active_beats
     ]
 
     # Built layer by layer above, so re-sort into time order: a schedule

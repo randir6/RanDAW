@@ -44,10 +44,11 @@ def build_parser():
         # parsing and validation already done.
         type=parse_layer_arg,
         # Shown in --help and error messages in place of "LAYER".
-        metavar="BEATS:NOTES:SAMPLE[:gain=G]",
-        help="One layer, e.g. '3:0,3,5:kick.wav' or '4:0,-2:snare.wav:gain=0.7'. "
+        metavar="BEATS:NOTES:SAMPLE[:gain=G][:active=B,...]",
+        help="One layer, e.g. '3:0,3,5:kick.wav' or '13:0:tom.wav:active=3,5,8'. "
         "Repeat for more layers. Notes are semitone offsets and loop over the "
-        "layer's own beats. Gain defaults to 1.0 (unity).",
+        "layer's own beats. gain= defaults to 1.0 (unity). active= lists which "
+        "of the layer's own beats sound, counting from 1; all of them by default.",
     )
     parser.add_argument("--loops", type=int, required=True, help="Number of LCM cycles to render.")
     parser.add_argument("--out", required=True, help="Output WAV path.")

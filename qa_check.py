@@ -282,6 +282,69 @@ check("events carry their layer's sample and gain",
       all(e.sample_path == "a.wav" and e.gain == 0.5 for e in events if e.layer == 0)
       and all(e.sample_path == "b.wav" and e.gain == 0.8 for e in events if e.layer == 1))
 
+# --- Beat skipping ----------------------------------------------------------
+# A layer names which of its OWN beats sound, counting from 1 the way
+# musicians do. Everything else about the layer is unchanged.
+skipped = schedule([Layer(beats=13, notes=[0], sample_path="a.wav", gain=1.0,
+                          active_beats={2, 4, 7})], loops=1)
+check("active beats keep only the beats named",
+      [e.pulse for e in skipped] == [2, 4, 7],
+      "beats 3,5,8 (1-based) -> pulses 2,4,7 (0-based)")
+
+# Silencing beats must not slide the survivors along: a skipped beat leaves a
+# gap, it does not close one up.
+full = schedule([Layer(beats=8, notes=[0], sample_path="a.wav", gain=1.0)], loops=1)
+sparse = schedule([Layer(beats=8, notes=[0], sample_path="a.wav", gain=1.0,
+                         active_beats={0, 3, 6})], loops=1)
+check("skipped beats leave gaps rather than shifting the rest",
+      [e.pulse for e in sparse] == [0, 3, 6]
+      and set(e.pulse for e in sparse) <= set(e.pulse for e in full))
+
+# Listing every beat must be identical to not using the option at all --
+# otherwise the feature would have changed the default behaviour.
+all_listed = schedule([Layer(beats=5, notes=[0, 3], sample_path="a.wav", gain=1.0,
+                             active_beats={0, 1, 2, 3, 4})], loops=2)
+default = schedule([Layer(beats=5, notes=[0, 3], sample_path="a.wav", gain=1.0)], loops=2)
+check("listing all beats matches leaving active= off entirely",
+      all_listed == default, f"{len(default)} events either way")
+
+# A note belongs to its beat POSITION, so silencing a beat silences its note
+# rather than sliding the next note forward. Beats 1 and 3 of a 4-beat layer
+# are note indices 0 and 2, so +0 and +24 -- not +0 and +12.
+notes_kept = schedule([Layer(beats=4, notes=[0, 12, 24, 36], sample_path="a.wav",
+                             gain=1.0, active_beats={0, 2})], loops=1)
+check("notes stay attached to their beat, they do not shuffle up",
+      [e.semitones for e in notes_kept] == [0, 24],
+      f"{[e.semitones for e in notes_kept]} (not [0, 12])")
+
+# Through the CLI, end to end.
+sparse_audio = render([f"8:0:{impulse}:active=1,4,7"], 1, "sparse.wav",
+                      "--cycle-duration", "2.0")
+check("beat skipping works through the command line",
+      len(np.nonzero(sparse_audio)[0]) == 3,
+      f"{len(np.nonzero(sparse_audio)[0])} onsets from 8 beats")
+
+# The two options are independent and order should not matter.
+one_way = render([f"4:0:{impulse}:gain=0.5:active=1,3"], 1, "opt1.wav", "--cycle-duration", "1.0")
+other_way = render([f"4:0:{impulse}:active=1,3:gain=0.5"], 1, "opt2.wav", "--cycle-duration", "1.0")
+check("gain= and active= can be written in either order",
+      np.array_equal(one_way, other_way) and abs(one_way.max() - 0.5) < 2 * QUANTUM)
+
+for label, args, code, expect in [
+    ("active beat above the beat count is rejected",
+     ["--layer", f"4:0:{impulse}:active=5", "--loops", "1"], 2, "outside 1..4"),
+    ("active beat 0 is rejected (beats count from 1)",
+     ["--layer", f"4:0:{impulse}:active=0", "--loops", "1"], 2, "outside 1..4"),
+    ("non-numeric active beats are reported",
+     ["--layer", f"4:0:{impulse}:active=x", "--loops", "1"], 2, "whole numbers"),
+    ("an unknown option is named, not silently treated as a path",
+     ["--layer", f"4:0:{impulse}:gian=0.5", "--loops", "1"], 2, "unknown option"),
+    ("a repeated option is rejected",
+     ["--layer", f"4:0:{impulse}:gain=0.5:gain=0.2", "--loops", "1"], 2, "more than once"),
+]:
+    r = run(*args, "--out", str(tmp / "err.wav"))
+    check(label, r.returncode == code and expect in (r.stdout + r.stderr), f"exit {r.returncode}")
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: " + "; ".join(failures))

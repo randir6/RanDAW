@@ -53,24 +53,27 @@ boundary, as `--dump-schedule` does.
 
 ---
 
-## Phase 3 — Beat skipping (arc item 2)
+## Phase 3 — Beat skipping (arc item 2) — DONE
 
-**Goal.** A layer declares which of its own beats sound: a 13-beat layer
-firing only on 3, 5, 8. A filter over the layer's own beat index,
-independent of other layers.
+`active=` on a layer lists which of its own beats sound, counting from 1:
+`--layer 13:0:tom.wav:active=3,5,8`. Omitted means all of them.
 
-**Why here.** First genuinely new musical capability, and after phase 2 it
-is close to a one-line filter on the event list. Good proof the split paid
-for itself.
+Active beats rather than a pattern string, partly because a pattern carries
+its own length which could disagree with the declared beat count — two
+sources of truth for one fact — and partly because `active=3,5,8` beats
+counting the dots in `..x.x..x.....`.
 
-**Done when.** Sparse patterns render correctly and the skipped beats are
-audibly absent without shifting anything else in time.
+As predicted, the renderer needed no changes at all: the whole feature is
+one `if` clause on the comprehension in `schedule()`. The rest of the work
+was parsing and validation.
 
-**Open.** Whether skipping is a list of active beats, a list of skipped
-beats, or a pattern string like `x..x.x..`. The pattern string is the most
-readable at a glance and the most musician-ish.
+**Settled.** A note belongs to its beat position, so silencing a beat
+silences that note rather than sliding the next one forward. See NOTES.md,
+which also records the alternative in case the sparse melodies want it.
 
----
+**Also landed.** `--layer` now takes `key=value` options in any order, since
+`gain=` was no longer the only one. This is the CLI starting to creak
+exactly where phase 4 predicted it would.
 
 ## Phase 4 — Config file
 

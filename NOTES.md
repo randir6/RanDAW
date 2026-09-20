@@ -62,6 +62,22 @@ Not worth doing until someone actually wants six coprime layers.
 
 ## Decisions worth remembering
 
+- **Skipping a beat silences its note; it does not shuffle the melody up.**
+  A layer's note sequence is indexed by beat position whether or not that
+  beat sounds, so `active=1,3` on a 4-beat layer with notes `0,12,24,36`
+  plays `0` and `24`, not `0` and `12`. Like muting a step on a drum machine
+  rather than deleting it.
+
+  The alternative is real and might be worth having later: advance the note
+  sequence only on beats that sound, so every note gets heard in turn and
+  skipping becomes a rhythmic mask over a melody that keeps running. That
+  needs the note counter to change rather than just a filter, so it was not
+  free, and the current behaviour is the one that leaves existing renders
+  untouched. Ask for it if the sparse melodies feel wrong.
+- **Active beats count from 1**, as musicians count, and convert to 0-based
+  indices once at parse time. Phase 5's scale degrees will be 1-indexed for
+  the same reason.
+
 - **The schedule is the core, audio is one consumer.** `schedule()` produces
   the event list and `render_audio()` sounds it. Beat skipping filters the
   list, drift moves it, MIDI exports it and a visualiser would draw it, so

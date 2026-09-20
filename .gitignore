@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Renders written into the repo root, e.g. by the README's quickstart.
+# samples/*.wav are deliberately committed, so this rule is root-only.
+/*.wav

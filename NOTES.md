@@ -132,6 +132,10 @@ Design notes from thinking it through, so the work does not start cold:
   accents, and `Event` already carries a gain field that could vary.
 - **A `beat` field on `Event`.** Would make `--dump-schedule` readable
   without mental arithmetic, and a visualiser will want it.
+- **Rename `loops` to `cycles`.** They are the same unit, and having two
+  words for it is the one genuinely confusing bit of vocabulary. Not renamed
+  because every config and example uses `loops`; would want doing in one go,
+  with the old spelling accepted for a while.
 - **BPM referenced to a named layer.** `--cycle-duration` is the honest
   control, but "put layer 2 at 120 bpm" is how a musician would ask.
 

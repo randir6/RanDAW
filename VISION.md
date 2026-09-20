@@ -24,9 +24,16 @@ generate, export, drag into whatever consumes it.
 4. Per-layer effects (reverb, envelope, filtering) before mixdown.
 5. Possible future: per-note sample switching (not just pitch-shifting
    one sample), likely modeled as multiple layers.
+6. Possible long-term: a web-based GUI that visualises the polyrhythm —
+   e.g. shapes moving in time with the overlaid beats. Generation stays
+   headless and scriptable; a GUI would be another front end over the
+   same core, not a rewrite of it.
 
 ## Non-goals for now
-No real-time playback, no plugin format, no GUI.
+No real-time playback, no plugin format, no GUI in the early phases. The
+GUI exclusion is a sequencing decision rather than an architectural one
+(see arc item 6): the core should stay callable by something other than
+the CLI, so nothing in it should assume a human is typing.
 
 ## Tech direction
 Python, numpy for signal generation/mixing, soundfile or pydub for WAV

@@ -75,6 +75,8 @@ which also records the alternative in case the sparse melodies want it.
 `gain=` was no longer the only one. This is the CLI starting to creak
 exactly where phase 4 predicted it would.
 
+---
+
 ## Phase 4 — Config file
 
 **Goal.** Drive renders from a file. Keep the CLI for quick one-offs.

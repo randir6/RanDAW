@@ -65,6 +65,35 @@ Not worth doing until someone actually wants six coprime layers.
 Ideas deliberately not built, kept here so they are not lost. Nothing in
 this list is committed to, and none of it is in the phase plan.
 
+### Sections — variations across cycles (high priority)
+
+Treat a cycle as a bar, and let a piece be a sequence of sections that share
+a polyrhythmic base but vary what sits on top: which beats are active, which
+scale, which notes, gains, maybe samples. Four bars with the same skeleton
+and different detail is most of what turns a loop into an arrangement, and
+it is the largest musical gap in the tool as it stands.
+
+Design notes from thinking it through, so the work does not start cold:
+
+- **The schedule is already the right seam.** A section produces its own
+  events and they get offset by the cycles already elapsed. `render_audio`
+  would not change at all, the same way beat skipping did not touch it.
+- **The LCM must be computed across every section, not per section.** If
+  section 2 introduces a layer with a different beat count, the pulse grid
+  changes, and a grid that changed mid-piece would break the timing
+  guarantees. Take the LCM of all beat counts in the whole piece up front.
+- **Variation is best expressed as an override, not a re-declaration.**
+  Repeating every layer per section would be miserable to write and easy to
+  get inconsistent. Something closer to: declare the layers once, then
+  per-section state only what differs.
+- **Section length wants to be in cycles**, since the cycle is the bar.
+- **Interacts with drift (phase 7).** Sections are deliberate variation;
+  drift is gradual variation. They are different answers to the same
+  musical problem and it is worth deciding whether they coexist or whether
+  one makes the other redundant before building the second one.
+
+### Smaller items
+
 - **Note sequence that advances only on sounding beats.** Currently a note
   belongs to its beat position, so skipping a beat silences that note. The
   alternative advances the sequence only when a beat sounds, so every note

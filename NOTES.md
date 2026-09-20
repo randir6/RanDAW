@@ -89,5 +89,4 @@ Not worth doing until someone actually wants six coprime layers.
 - **`--layer` is self-contained** (`BEATS:NOTES:SAMPLE[:gain=G]`) rather than
   the spec's `--sample1`/`--sample2`, which would not extend past two layers.
 - **A "pulse" is the LCM grid**, the finest subdivision on which every layer's
-  beats land — not any single layer's beat spacing. `--bpm` sets pulses per
-  minute, so it is not the felt tempo of any one layer.
+  beats land — not any single layer's beat spacing.

@@ -51,6 +51,8 @@ The schedule now has its own checks rather than being inferred from audio.
 where the zero-drift property comes from — and converts to seconds at the
 boundary, as `--dump-schedule` does.
 
+---
+
 ## Phase 3 — Beat skipping (arc item 2)
 
 **Goal.** A layer declares which of its own beats sound: a 13-beat layer

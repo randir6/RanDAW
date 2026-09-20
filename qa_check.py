@@ -8,6 +8,14 @@ The timing model here is derived independently of render.py: a cycle lasts T,
 and a layer with B beats divides that same T into B equal parts, hitting at
 t = (cycle + j/B) * T. That is what "polyrhythm" means, and it is what the
 renderer has to reproduce.
+
+Why derive it independently? If the test worked out expected positions by
+calling the same code it is testing, it would agree with any bug that code
+had. Writing the model out separately from the musical definition means the
+two have to agree for a real reason.
+
+There is no test framework here (no pytest) -- just a check() function and
+plain Python. One fewer dependency, and nothing hidden.
 """
 import subprocess
 import sys
@@ -22,21 +30,45 @@ from polyrhythm.schedule import schedule
 
 SR = 44100
 PULSE = 0.15
+# 16-bit audio stores 2**16 = 65536 levels spanning -1..+1, so the smallest
+# representable step is 1/32768. Comparing two renders more tightly than this
+# is meaningless -- the format cannot express a smaller difference.
 QUANTUM = 1 / 32768  # output is 16-bit PCM; tolerances can't be tighter
 
 ROOT = Path(__file__).parent
+# A throwaway directory for test files, somewhere the OS cleans up. Keeps
+# generated clutter out of the repo.
 tmp = Path(tempfile.mkdtemp(prefix="polyrhythm-qa-"))
+# Collected rather than raised, so one failure doesn't hide the other 30.
 failures = []
 
 
 def check(label, condition, detail=""):
+    """Record a pass/fail. `condition` is already-evaluated True/False, so
+    every check runs regardless of what came before."""
     print(f"[{'PASS' if condition else 'FAIL'}] {label}{'  ' + detail if detail else ''}")
     if not condition:
         failures.append(label)
 
 
 def run(*cli_args):
+    """Run generate.py as a separate process, exactly as a user would.
+
+    The *  in `*cli_args` collects any number of arguments into a tuple, and
+    the * inside the list spreads them back out -- so run("--loops", "4")
+    becomes [python, "generate.py", "--loops", "4"].
+
+    sys.executable is the path to the Python running this script, rather than
+    hardcoding "python3", so the subprocess uses the same interpreter and
+    therefore the same installed numpy and soundfile.
+
+    Testing through the command line rather than by importing functions means
+    these checks stay valid even if the internals are rearranged -- which is
+    what let the phase 2 refactor be verified rather than hoped about.
+    """
     return subprocess.run(
+        # capture_output keeps stdout/stderr instead of printing them;
+        # text=True returns strings rather than raw bytes.
         [sys.executable, "generate.py", *cli_args], capture_output=True, text=True, cwd=ROOT
     )
 
@@ -60,10 +92,28 @@ def sine(freq, dur=0.2, amp=0.9):
 
 
 def dominant_freq(window):
+    """Measure the strongest pitch present, in Hz.
+
+    This is how the pitch-shift checks stay honest: instead of trusting the
+    code's arithmetic, they listen to the output and measure what came back.
+
+    An FFT converts a stretch of audio from "amplitude over time" into
+    "strength at each frequency". The loudest bin in that result is the
+    dominant pitch.
+    """
+    # Boolean indexing: the inner comparison makes an array of True/False, and
+    # using it as an index keeps only the True positions. Here it strips
+    # near-silence so trailing quiet doesn't dilute the measurement.
     window = window[np.abs(window) > 1e-4]
     if len(window) < 64:
-        return 0.0
+        return 0.0  # too little signal to say anything meaningful
+
+    # A Hann window tapers the excerpt to zero at both ends. Without it the
+    # abrupt cut looks like a click to the FFT and smears energy across the
+    # spectrum, blurring the peak we are trying to find.
     spectrum = np.abs(np.fft.rfft(window * np.hanning(len(window))))
+    # rfftfreq gives the frequency each bin represents; argmax finds the index
+    # of the largest value. Together: "the frequency of the loudest bin".
     return np.fft.rfftfreq(len(window), 1 / SR)[np.argmax(spectrum)]
 
 
@@ -133,6 +183,11 @@ audio = render(
 )
 for i, (semis, want) in enumerate([(0, 440.0), (12, 880.0), (-12, 220.0), (7, 440 * 2 ** (7 / 12))]):
     got = dominant_freq(audio[i * beat : (i + 1) * beat])
+    # Cents: 1200 to an octave, so 100 per semitone. Pitch error is measured
+    # this way because hearing is ratio-based -- 10 Hz out matters enormously
+    # at 100 Hz and is inaudible at 5 kHz, whereas cents mean the same thing
+    # everywhere. Under about 5 cents is imperceptible; we allow 15 to leave
+    # room for FFT bin resolution.
     cents = 1200 * np.log2(got / want) if got > 0 else 9999
     check(f"pitch shift {semis:+d} st -> {want:.0f} Hz", abs(cents) < 15, f"{got:.0f} Hz ({cents:+.1f} cents)")
 
@@ -230,5 +285,7 @@ check("events carry their layer's sample and gain",
 print()
 if failures:
     print(f"{len(failures)} FAILED: " + "; ".join(failures))
+    # A non-zero exit code is how a script reports failure to whatever ran it,
+    # so this can be wired into a git hook or CI and actually block a commit.
     sys.exit(1)
 print("all checks passed")

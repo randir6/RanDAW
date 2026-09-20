@@ -102,6 +102,8 @@ apart. That refactor is what makes a third front end cheap.
 
 **Note.** Python 3.11+ is now a hard requirement, for `tomllib`.
 
+---
+
 ## Phase 5 — Scales and keys (arc item 6)
 
 **Goal.** Notes as scale degrees against a named scale and key, so swapping

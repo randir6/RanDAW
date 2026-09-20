@@ -60,6 +60,28 @@ Fixable if it ever bites, by computing each event's position directly from
 its fractional position in the cycle instead of snapping to a pulse grid.
 Not worth doing until someone actually wants six coprime layers.
 
+## Open questions
+
+### Rest behaviour may not be right — revisit first
+
+Flagged at the end of the first session, unresolved and deliberately not
+acted on. The doubt is about rests shifting position each cycle: a rest
+travels with the sequence, so when the sequence length differs from the beat
+count the silence lands on a different beat each time round. That is what
+was built and it is what the checks assert, but it may not be the musically
+useful behaviour, or may not be the only one wanted.
+
+Next step is to play with examples and work out what it *should* do before
+changing anything. `configs/rests.toml` is the place to start — try making
+the sequence exactly as long as the beat count, which pins the rest in place,
+and compare. `--dump-schedule` shows exactly where each rest falls.
+
+Possible outcomes, none decided: current behaviour is right and just needs
+demonstrating better; rests should be fixed to a beat like `active` is; or
+both behaviours are wanted and it becomes a per-layer choice. Related: the
+backlogged `notes_follow=beats|hits` item below is the same family of
+question.
+
 ## Backlog
 
 Ideas deliberately not built, kept here so they are not lost. Nothing in

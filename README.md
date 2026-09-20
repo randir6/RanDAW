@@ -151,11 +151,13 @@ Phases 1–6 are done: N layers, cycle-based tempo, the schedule/audio split,
 beat skipping, TOML configs, scales, and rests. Phase 7 is drift, 8 is
 per-layer effects, 9 MIDI export, 10 a web visualiser.
 
-**Two things worth knowing before picking up:**
+**Three things worth knowing before picking up:**
 
-1. **Sections is top of the backlog**, above the remaining numbered phases.
+1. **Rest behaviour is under question** — see Open questions at the top of
+   `NOTES.md`. Understand it before building on it.
+2. **Sections is top of the backlog**, above the remaining numbered phases.
    It is probably the largest musical gap.
-2. **Nobody has run this with real samples yet.** Everything so far is
+3. **Nobody has run this with real samples yet.** Everything so far is
    verified against synthetic one-shots, which proves the maths but not the
    music.
 

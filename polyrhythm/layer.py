@@ -49,6 +49,48 @@ class Layer:
     active_beats: set[int] | None = None
 
 
+def make_layer(
+    beats: int,
+    notes: list[int],
+    sample_path: str,
+    gain: float = 1.0,
+    active: list[int] | None = None,
+) -> Layer:
+    """Validate the pieces of a layer and build one.
+
+    Both the command line and the config file end up here, so the rules live
+    in exactly one place and cannot drift apart as the two front ends grow.
+    Raises plain ValueError; each caller wraps it with its own context (which
+    --layer string, or which entry in which file).
+
+    `active` arrives 1-BASED, as the user writes it, and is converted to
+    0-based indices here -- the single point where that translation happens.
+    """
+    if beats < 1:
+        raise ValueError(f"beat count must be >= 1, got {beats}")
+    if not notes:
+        raise ValueError("note sequence must not be empty")
+    if gain < 0:
+        raise ValueError(f"gain must be >= 0, got {gain}")
+    if not sample_path:
+        raise ValueError("no sample path")
+
+    if active is not None:
+        for n in active:
+            # Chained comparison: Python allows 1 <= n <= beats, which reads
+            # like the maths and is checked as one expression.
+            if not 1 <= n <= beats:
+                raise ValueError(f"active beat {n} is outside 1..{beats}")
+        # A set comprehension (curly braces rather than square). Sets discard
+        # duplicates, so [3, 3, 5] quietly means the same as [3, 5], and
+        # membership testing is fast. The -1 is the 1-based-to-0-based shift.
+        active = {n - 1 for n in active}
+
+    return Layer(
+        beats=beats, notes=notes, sample_path=sample_path, gain=gain, active_beats=active
+    )
+
+
 def _split_options(spec: str, rest: str) -> tuple[str, dict[str, str]]:
     """Peel trailing `key=value` fields off the end, leaving the sample path.
 
@@ -86,42 +128,24 @@ def _split_options(spec: str, rest: str) -> tuple[str, dict[str, str]]:
 
 
 def _parse_gain(value: str, spec: str) -> float:
+    """Text to number only -- whether the number is ALLOWED is make_layer's job."""
     try:
-        gain = float(value)
+        return float(value)
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"invalid layer {spec!r}: gain {value!r} is not a number"
         ) from None
-    if gain < 0:
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: gain must be >= 0, got {gain}"
-        )
-    return gain
 
 
-def _parse_active(value: str, beats: int, spec: str) -> set[int]:
-    """Turn "3,5,8" into the 0-based set {2, 4, 7}."""
+def _parse_active(value: str, spec: str) -> list[int]:
+    """Turn "3,5,8" into [3, 5, 8]. Still 1-based; make_layer shifts it."""
     try:
-        numbers = [int(n) for n in value.split(",")]
+        return [int(n) for n in value.split(",")]
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"invalid layer {spec!r}: active beats {value!r} must be whole numbers, "
             f"e.g. 'active=3,5,8'"
         ) from None
-
-    for n in numbers:
-        # Chained comparison: Python allows 1 <= n <= beats, which reads like
-        # the maths and is checked as one expression.
-        if not 1 <= n <= beats:
-            raise argparse.ArgumentTypeError(
-                f"invalid layer {spec!r}: active beat {n} is outside 1..{beats}"
-            )
-
-    # A set comprehension (curly braces rather than square). Sets discard
-    # duplicates, so 'active=3,3,5' quietly means the same as 'active=3,5',
-    # and membership testing is fast. The -1 is the 1-based-to-0-based
-    # conversion, happening exactly once, here.
-    return {n - 1 for n in numbers}
 
 
 def parse_layer_arg(spec: str) -> Layer:
@@ -167,25 +191,12 @@ def parse_layer_arg(spec: str) -> Layer:
 
     sample_path, options = _split_options(spec, rest)
 
-    # Validate AFTER parsing, so the messages can quote the actual values.
-    # This is the boundary where input from outside the program arrives, so
-    # this is where it gets verified.
-    if beats < 1:
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: beat count must be >= 1, got {beats}"
-        )
-    # An empty string is "falsy" in Python, so `not sample_path` is True for
-    # "" -- the idiomatic way to write "if this is empty".
-    if not sample_path:
-        raise argparse.ArgumentTypeError(f"invalid layer {spec!r}: no sample path")
-
-    # dict.get returns None when the key is absent rather than raising, which
-    # is exactly the "absent means default" behaviour we want.
     gain = _parse_gain(options["gain"], spec) if "gain" in options else 1.0
-    active = _parse_active(options["active"], beats, spec) if "active" in options else None
+    active = _parse_active(options["active"], spec) if "active" in options else None
 
-    # Passing arguments by name rather than by position: slower to type, but
-    # impossible to get the order wrong, and it reads clearly.
-    return Layer(
-        beats=beats, notes=notes, sample_path=sample_path, gain=gain, active_beats=active
-    )
+    # All the actual rules live in make_layer, shared with the config loader.
+    # We only add the context -- which --layer string went wrong.
+    try:
+        return make_layer(beats, notes, sample_path, gain, active)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"invalid layer {spec!r}: {e}") from None

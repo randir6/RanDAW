@@ -345,6 +345,87 @@ for label, args, code, expect in [
     r = run(*args, "--out", str(tmp / "err.wav"))
     check(label, r.returncode == code and expect in (r.stdout + r.stderr), f"exit {r.returncode}")
 
+# --- Config files -----------------------------------------------------------
+# The point of a config is that it is another way to say the same thing, so
+# the check that matters is that it produces exactly the same audio.
+cfg_dir = tmp / "configs"
+cfg_dir.mkdir()
+
+
+def write_config(name, text):
+    path = cfg_dir / name
+    path.write_text(text)
+    return path
+
+
+# "../impulse.wav" is relative to the CONFIG, which sits one level down.
+same_config = write_config("same.toml", f"""
+cycle_duration = 2.0
+loops = 2
+
+[[layer]]
+beats = 3
+notes = [0, 5]
+sample = "../impulse.wav"
+gain = 0.4
+active = [1, 3]
+
+[[layer]]
+beats = 4
+notes = [0]
+sample = "../impulse.wav"
+gain = 0.25
+""")
+
+from_config = run("--config", str(same_config), "--out", str(tmp / "cfg.wav"))
+from_cli = render([f"3:0,5:{impulse}:gain=0.4:active=1,3", f"4:0:{impulse}:gain=0.25"],
+                  2, "cli.wav", "--cycle-duration", "2.0")
+check("a config renders byte-identically to the equivalent command line",
+      from_config.returncode == 0
+      and np.array_equal(sf.read(tmp / "cfg.wav", dtype="float32")[0], from_cli),
+      "same layers, both routes")
+
+check("sample paths resolve relative to the config file, not the shell",
+      from_config.returncode == 0, "'../impulse.wav' found from a config one level down")
+
+# Overriding is what makes a config practical: preview without editing it.
+run("--config", str(same_config), "--loops", "1", "--out", str(tmp / "ovr.wav"))
+check("a command-line value overrides the config",
+      len(sf.read(tmp / "ovr.wav", dtype="float32")[0]) == int(2.0 * SR),
+      "--loops 1 against loops = 2 in the file")
+
+bad_configs = [
+    ("unknown setting is named", 'cycle_durations = 2.0\nloops = 1\n[[layer]]\nbeats = 1\nnotes = [0]\nsample = "../impulse.wav"\n', "unknown setting"),
+    ("unknown layer key is named", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = [0]\nsample = "../impulse.wav"\ngian = 0.5\n', "unknown key"),
+    ("missing layer key is named", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = [0]\n', "missing sample"),
+    ("no layers at all is caught", 'loops = 1\ncycle_duration = 2.0\n', "no layers"),
+    ("wrong type for a setting is caught", 'loops = "four"\n[[layer]]\nbeats = 1\nnotes = [0]\nsample = "../impulse.wav"\n', "must be int"),
+    ("wrong type for notes is caught", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = ["a"]\nsample = "../impulse.wav"\n', "list of whole numbers"),
+    ("layer rules are shared with the CLI", 'loops = 1\n[[layer]]\nbeats = 4\nnotes = [0]\nsample = "../impulse.wav"\nactive = [9]\n', "outside 1..4"),
+    ("malformed TOML is reported as such", 'loops = = 1\n', "not valid TOML"),
+]
+for label, text, expect in bad_configs:
+    path = write_config("bad.toml", text)
+    r = run("--config", str(path), "--out", str(tmp / "err.wav"))
+    check(label, r.returncode == 2 and expect in (r.stdout + r.stderr), f"exit {r.returncode}")
+
+r = run("--config", str(tmp / "nope.toml"), "--out", str(tmp / "err.wav"))
+check("a missing config file is reported plainly",
+      r.returncode == 2 and "not found" in (r.stdout + r.stderr))
+
+r = run("--config", str(same_config), "--layer", f"1:0:{impulse}", "--out", str(tmp / "err.wav"))
+check("--config and --layer together is refused",
+      r.returncode == 2 and "not both" in (r.stdout + r.stderr))
+
+r = run("--out", str(tmp / "err.wav"), "--loops", "1")
+check("neither --config nor --layer is refused",
+      r.returncode == 2 and "need either" in (r.stdout + r.stderr))
+
+no_out = write_config("noout.toml", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = [0]\nsample = "../impulse.wav"\n')
+r = run("--config", str(no_out))
+check("a config without an output path says so",
+      r.returncode == 2 and "need --out" in (r.stdout + r.stderr))
+
 print()
 if failures:
     print(f"{len(failures)} FAILED: " + "; ".join(failures))

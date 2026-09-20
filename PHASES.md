@@ -77,25 +77,30 @@ exactly where phase 4 predicted it would.
 
 ---
 
-## Phase 4 — Config file
+## Phase 4 — Config file — DONE
 
-**Goal.** Drive renders from a file. Keep the CLI for quick one-offs.
+`--config groove.toml` drives a whole piece from a file. Anything also given
+on the command line overrides it, so `--loops 1` previews without editing.
+`configs/` holds the four grooves as working examples.
 
-**Why here.** By now a layer has beats, notes, sample(s), gain and a skip
-pattern, with scales and sample sets immediately after. `--layer
-"4:1,3,5,6:scale=dorian:samples=a.wav,b.wav:gain=0.7:skip=x..x"` is already
-past readable. A config file is also the natural save format for the
-eventual GUI and the thing you would version or share.
+**Settled: TOML.** `tomllib` is in the standard library from Python 3.11, so
+no new dependency, and TOML carries comments — which matters a lot for a file
+you tweak by ear (`active = [1, 4, 7]  # tresillo`). The cost is that tomllib
+only reads; if a GUI ever needs to save these, that wants either a small
+writer dependency or a hand-rolled one. JSON would have given free writing
+but no comments, which is the wrong trade while a human is the only author.
 
-**Done when.** A config renders identically to the equivalent CLI call, and
-the file is pleasant to hand-edit.
+**Settled: paths resolve relative to the config file**, not the shell, so a
+config and its samples travel together.
 
-**Open.** Format. TOML reads via stdlib `tomllib` (no new dependency) and is
-nice to hand-write; JSON reads *and writes* via stdlib, which matters if a
-GUI must save; YAML is friendliest but needs a dependency. Leaning JSON for
-round-tripping, TOML for authoring — possibly read both.
+**Verification.** All four example configs render byte-identical to the
+command lines that produced the same grooves.
 
----
+**Also landed.** `make_layer()` now holds every layer validation rule, shared
+by the CLI parser and the config loader, so the two front ends cannot drift
+apart. That refactor is what makes a third front end cheap.
+
+**Note.** Python 3.11+ is now a hard requirement, for `tomllib`.
 
 ## Phase 5 — Scales and keys (arc item 6)
 

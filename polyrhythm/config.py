@@ -17,19 +17,20 @@ An example of the shape:
 
     [[layer]]
     beats = 8
-    notes = [0]
+    notes = [0, "-", 0, 0]
     sample = "../samples/kick.wav"
     gain = 0.75
     active = [1, 4, 7]
 
 `[[layer]]` with double brackets is TOML's "array of tables": repeat the
-block and you get a list of layers.
+block and you get a list of layers. "-" inside a note or degree sequence is
+a rest -- that position sounds nothing.
 """
 
 import tomllib
 from pathlib import Path
 
-from polyrhythm.layer import Layer, make_layer
+from polyrhythm.layer import REST, Layer, make_layer
 from polyrhythm.scales import SCALES, scale_names
 
 # Listing the permitted keys lets us reject typos. Without this, writing
@@ -80,6 +81,28 @@ def _require_int_list(value, what: str) -> list[int]:
     ):
         raise ConfigError(f"{what} must be a list of whole numbers, got {value!r}")
     return value
+
+
+def _require_sequence(value, what: str) -> list[int | None]:
+    """Like the above, but for notes and degrees, where the REST marker is
+    allowed alongside the numbers and becomes None.
+
+    Not used for `active`, where a rest would be meaningless -- silencing a
+    beat is exactly what `active` already does.
+    """
+    if not isinstance(value, list):
+        raise ConfigError(f"{what} must be a list, got {value!r}")
+    items: list[int | None] = []
+    for item in value:
+        if item == REST:
+            items.append(None)
+        elif isinstance(item, bool) or not isinstance(item, int):
+            raise ConfigError(
+                f"{what} must contain whole numbers or {REST!r} for a rest, got {item!r}"
+            )
+        else:
+            items.append(item)
+    return items
 
 
 def load_config(path: str) -> tuple[list[Layer], dict]:
@@ -177,9 +200,9 @@ def load_config(path: str) -> tuple[list[Layer], dict]:
         if not isinstance(entry["sample"], str):
             raise ConfigError(f"{where}: sample must be a path string")
 
-        notes = _require_int_list(entry["notes"], f"{where}: notes") if "notes" in entry else None
+        notes = _require_sequence(entry["notes"], f"{where}: notes") if "notes" in entry else None
         degrees = (
-            _require_int_list(entry["degrees"], f"{where}: degrees") if "degrees" in entry else None
+            _require_sequence(entry["degrees"], f"{where}: degrees") if "degrees" in entry else None
         )
         active = (
             _require_int_list(entry["active"], f"{where}: active") if "active" in entry else None

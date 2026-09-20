@@ -94,10 +94,19 @@ Design notes from thinking it through, so the work does not start cold:
 
 ### Smaller items
 
+- **Sample sets per layer.** Was phase 6; dropped back to the backlog. One
+  sample per layer, pitch-shifted, is the model. If it returns, the samples
+  list should be length 1 or exactly the length of the pitch sequence, so a
+  layer keeps ONE period: an independently cycling sample list would give
+  4 beats / 12 notes / 5 samples a 15-cycle repeat that nobody can author or
+  predict.
+- **Chords within a layer.** One note per beat today.
+- **Chromatic passing notes in a degree sequence.** Degrees can only land on
+  scale members; anything outside needs the semitone notation.
+- **Modulation.** Scale and root are fixed for a whole render.
 - **Samples declaring their own root pitch.** Would let `key = "D"` mean
   something real rather than assuming every sample is a C, and would make
   `root` a musical setting rather than an offset.
-
 - **Note sequence that advances only on sounding beats.** Currently a note
   belongs to its beat position, so skipping a beat silences that note. The
   alternative advances the sequence only when a beat sounds, so every note
@@ -127,6 +136,19 @@ Design notes from thinking it through, so the work does not start cold:
   control, but "put layer 2 at 120 bpm" is how a musician would ask.
 
 ## Decisions worth remembering
+
+- **A rest is `"-"`, in both notations.** It cannot be a number, because 0 is
+  already meaningful in each: unison in semitones, one step below the root as
+  a degree. `"-5"` is still minus five; only an exact `"-"` is a rest.
+- **Rests and `active=` are different tools.** An inactive beat is silent on
+  the same beat every cycle. A rest travels with the sequence, so when the
+  sequence and beat count are different lengths the silence lands on a
+  different beat each cycle. Both are checked.
+- **The composed-pattern and phasing notations are the same model.** Writing
+  a sequence whose length equals the beat count (or a multiple) gives a
+  plainly composed per-beat pattern; a different length gives phasing. There
+  is no separate mode -- `degrees = [1,0,1,2,1,0,1,3,1,0,2,4]` on a 4-beat
+  layer is simply a 3-cycle pattern.
 
 - **Pitches are `notes` (semitones) or `degrees` (against a scale), never one
   field that changes meaning.** A single field reinterpreted whenever a scale

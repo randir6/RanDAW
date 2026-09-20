@@ -60,7 +60,8 @@ def build_parser():
         "active= which beats sound counting from 1 (default all), degrees= "
         "with scale= to give pitches as scale degrees instead of semitones "
         "(leave the notes field empty, e.g. '8::pluck.wav:degrees=1,3,5:"
-        "scale=dorian'), and root= to transpose by semitones.",
+        "scale=dorian'), and root= to transpose by semitones. A '-' in place "
+        "of a note or degree is a rest, sounding nothing at that position.",
     )
     # These default to None rather than to their real defaults so that main()
     # can tell "the user asked for this" from "nothing was said", which is what

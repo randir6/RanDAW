@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from polyrhythm.layer import Layer
+from polyrhythm.layer import Layer, make_layer, parse_layer_arg
 from polyrhythm.scales import SCALES, degree_to_semitones
 from polyrhythm.schedule import schedule
 
@@ -50,6 +50,16 @@ def check(label, condition, detail=""):
     print(f"[{'PASS' if condition else 'FAIL'}] {label}{'  ' + detail if detail else ''}")
     if not condition:
         failures.append(label)
+
+
+def _expect_value_error(fn):
+    """True if calling fn() raises ValueError. Lets a check() line test that
+    something is REJECTED without a try/except wrapped around every one."""
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
 
 
 def run(*cli_args):
@@ -401,7 +411,7 @@ bad_configs = [
     ("missing layer key is named", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = [0]\n', "missing sample"),
     ("no layers at all is caught", 'loops = 1\ncycle_duration = 2.0\n', "no layers"),
     ("wrong type for a setting is caught", 'loops = "four"\n[[layer]]\nbeats = 1\nnotes = [0]\nsample = "../impulse.wav"\n', "must be int"),
-    ("wrong type for notes is caught", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = ["a"]\nsample = "../impulse.wav"\n', "list of whole numbers"),
+    ("wrong type for notes is caught", 'loops = 1\n[[layer]]\nbeats = 1\nnotes = ["a"]\nsample = "../impulse.wav"\n', "whole numbers or"),
     ("layer rules are shared with the CLI", 'loops = 1\n[[layer]]\nbeats = 4\nnotes = [0]\nsample = "../impulse.wav"\nactive = [9]\n', "outside 1..4"),
     ("malformed TOML is reported as such", 'loops = = 1\n', "not valid TOML"),
 ]
@@ -517,6 +527,68 @@ bad_scale_cfg = write_config("badscale.toml",
 r = run("--config", str(bad_scale_cfg), "--out", str(tmp / "err.wav"))
 check("a config naming an unknown scale is refused",
       r.returncode == 2 and "unknown scale" in (r.stdout + r.stderr))
+
+# --- Rests ------------------------------------------------------------------
+# "-" in a sequence means "sound nothing here". It has to be a marker rather
+# than a number, because 0 already means unison in semitones and one step
+# below the root as a degree.
+rest_sched = schedule([Layer(beats=4, notes=[0, None, 7, None], sample_path="a.wav")], loops=1)
+check("a rest produces no event at all",
+      [e.pulse for e in rest_sched] == [0, 2], "4 beats, 2 rests -> 2 events")
+
+check("a layer of nothing but rests is refused",
+      _expect_value_error(lambda: make_layer(beats=2, sample_path="a.wav", notes=[None, None])),
+      "would never sound")
+
+# The important distinction: an inactive BEAT is silent on the same beat every
+# cycle, but a rest travels with the SEQUENCE, so when the sequence and the
+# beat count are different lengths it lands somewhere new each time round.
+travelling = schedule(
+    [Layer(beats=4, notes=[0, None, 0, 0, 0, 0], sample_path="a.wav")], loops=3
+)
+silent_beats = sorted(set(range(12)) - {e.pulse for e in travelling})
+check("a rest moves between cycles when the sequence length differs from the beats",
+      silent_beats == [1, 7], f"silent at beats {silent_beats}, not the same beat each cycle")
+
+fixed = schedule([Layer(beats=4, notes=[0], sample_path="a.wav", active_beats={0, 2, 3})], loops=3)
+silent_fixed = sorted(set(range(12)) - {e.pulse for e in fixed})
+check("an inactive beat is silent in the same place every cycle",
+      silent_fixed == [1, 5, 9], f"silent at beats {silent_fixed}, every 4")
+
+# Rests work the same way through both notations and both front ends.
+check("a rest inside degrees survives the scale conversion",
+      make_layer(beats=3, sample_path="a.wav", degrees=[1, None, 3], scale="major").notes
+      == [0, None, 4])
+
+by_rest = render([f"4:0,-,7,-:{impulse}"], 1, "rest.wav", "--cycle-duration", "2.0")
+check("rests reach the audio through the command line",
+      len(np.nonzero(by_rest)[0]) == 2, f"{len(np.nonzero(by_rest)[0])} onsets from 4 beats")
+
+rest_cfg = write_config("rest.toml", """
+cycle_duration = 2.0
+loops = 1
+[[layer]]
+beats = 4
+notes = [0, "-", 7, "-"]
+sample = "../impulse.wav"
+""")
+r = run("--config", str(rest_cfg), "--out", str(tmp / "restcfg.wav"))
+check("rests reach the audio through a config file",
+      r.returncode == 0
+      and np.array_equal(sf.read(tmp / "restcfg.wav", dtype="float32")[0], by_rest))
+
+for label, args, expect in [
+    ("a bad token in a sequence names the rest marker",
+     ["--layer", f"4:0,x,7:{impulse}"], "or '-' for a rest"),
+    ("'-' is still rejected where a beat number belongs",
+     ["--layer", f"4:0:{impulse}:active=1,-"], "whole numbers"),
+]:
+    r = run(*args, "--loops", "1", "--out", str(tmp / "err.wav"))
+    check(label, r.returncode == 2 and expect in (r.stdout + r.stderr), f"exit {r.returncode}")
+
+# "-5" must stay the number minus five rather than being read as a rest.
+check("a negative number is not mistaken for the rest marker",
+      parse_layer_arg(f"3:-5,0,-:{impulse}").notes == [-5, 0, None])
 
 print()
 if failures:

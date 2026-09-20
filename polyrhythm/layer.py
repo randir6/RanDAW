@@ -14,6 +14,12 @@ from polyrhythm.scales import SCALES, degree_to_semitones, scale_names
 # one place so the parser and the error messages can't drift apart.
 LAYER_OPTIONS = ("gain", "active", "degrees", "scale", "root")
 
+# Written in a sequence where a pitch would go, this means "sound nothing
+# here". It has to be a marker rather than a number because 0 is already a
+# legitimate value in both notations -- unison in semitones, and one step
+# below the root as a degree.
+REST = "-"
+
 
 # @dataclass is a "decorator": it takes the class below and adds methods to it
 # automatically. Without it we'd have to hand-write an __init__ that assigns
@@ -27,7 +33,11 @@ class Layer:
     # it would happily accept it. They exist to document intent and to let
     # editors and checkers catch mistakes before you run the code.
     beats: int
-    notes: list[int]  # semitone offsets, e.g. [0, 3, 5]
+    # Semitone offsets, e.g. [0, 3, 5]. None marks a rest: that position in
+    # the sequence sounds nothing. By the time a Layer exists, scale degrees
+    # have already been resolved to semitones, so this is the only pitch
+    # representation the rest of the program ever sees.
+    notes: list[int | None]
     sample_path: str
     # Fields with defaults. Because they have them, they must come after all
     # the fields that don't -- otherwise Python couldn't tell which argument
@@ -54,8 +64,8 @@ class Layer:
 def make_layer(
     beats: int,
     sample_path: str,
-    notes: list[int] | None = None,
-    degrees: list[int] | None = None,
+    notes: list[int | None] | None = None,
+    degrees: list[int | None] | None = None,
     scale: str | None = None,
     root: int = 0,
     gain: float = 1.0,
@@ -96,9 +106,10 @@ def make_layer(
             raise ValueError(f"unknown scale {scale!r}; expected one of: {scale_names()}")
         if not degrees:
             raise ValueError("degree sequence must not be empty")
-        # The whole feature, in one line: degrees become semitones and the
-        # rest of the program carries on exactly as it did before.
-        notes = [degree_to_semitones(d, scale, root) for d in degrees]
+        # Degrees become semitones, and rests stay rests. A conditional
+        # expression inside a comprehension: VALUE_IF if TEST else VALUE_ELSE,
+        # evaluated for every item.
+        notes = [None if d is None else degree_to_semitones(d, scale, root) for d in degrees]
     elif scale is not None:
         # A scale alongside raw semitones means someone expected the numbers
         # to be degrees. Better to say so than to silently ignore the scale.
@@ -106,6 +117,10 @@ def make_layer(
 
     if not notes:
         raise ValueError("note sequence must not be empty")
+    # all() is True for an empty sequence, but the check above has already
+    # ruled that out, so this can only mean every position is a rest.
+    if all(n is None for n in notes):
+        raise ValueError("sequence is all rests, so the layer would never sound")
     if gain < 0:
         raise ValueError(f"gain must be >= 0, got {gain}")
     if not sample_path:
@@ -183,8 +198,8 @@ def _parse_root(value: str, spec: str) -> int:
 
 
 def _parse_active(value: str, spec: str) -> list[int]:
-    """Turn "3,5,8" into [3, 5, 8]. Used for both active beats and degrees,
-    which are both 1-based lists of whole numbers."""
+    """Turn "3,5,8" into [3, 5, 8]. Active beats are always real numbers --
+    silencing a beat is what active= is FOR, so a rest here would be noise."""
     try:
         return [int(n) for n in value.split(",")]
     except ValueError:
@@ -192,6 +207,28 @@ def _parse_active(value: str, spec: str) -> list[int]:
             f"invalid layer {spec!r}: active beats {value!r} must be whole numbers, "
             f"e.g. 'active=3,5,8'"
         ) from None
+
+
+def _parse_sequence(value: str, spec: str, what: str) -> list[int | None]:
+    """Turn "0,-,7" into [0, None, 7], for notes and degrees alike.
+
+    The marker is compared as an exact string, so "-" is a rest while "-5" is
+    still the number minus five -- no ambiguity between the two.
+    """
+    items: list[int | None] = []
+    for token in value.split(","):
+        token = token.strip()
+        if token == REST:
+            items.append(None)
+            continue
+        try:
+            items.append(int(token))
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"invalid layer {spec!r}: {what} {token!r} must be a whole number "
+                f"or {REST!r} for a rest"
+            ) from None
+    return items
 
 
 def parse_layer_arg(spec: str) -> Layer:
@@ -227,7 +264,7 @@ def parse_layer_arg(spec: str) -> Layer:
         #     notes = []
         #     for n in notes_str.split(","):
         #         notes.append(int(n))
-        notes = [int(n) for n in notes_str.split(",")] if notes_str else None
+        notes = _parse_sequence(notes_str, spec, "note") if notes_str else None
     except ValueError:
         # `from None` suppresses the "during handling of the above exception,
         # another occurred" chain Python would otherwise print. The underlying
@@ -243,7 +280,9 @@ def parse_layer_arg(spec: str) -> Layer:
 
     gain = _parse_gain(options["gain"], spec) if "gain" in options else 1.0
     active = _parse_active(options["active"], spec) if "active" in options else None
-    degrees = _parse_active(options["degrees"], spec) if "degrees" in options else None
+    degrees = (
+        _parse_sequence(options["degrees"], spec, "degree") if "degrees" in options else None
+    )
     root = _parse_root(options["root"], spec) if "root" in options else 0
 
     # All the actual rules live in make_layer, shared with the config loader.

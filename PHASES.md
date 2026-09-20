@@ -140,20 +140,38 @@ plus the four phase-4 configs are unchanged.
 
 ---
 
-## Phase 6 — Sample sets per layer (arc item 5)
+## Phase 6 — Rests — DONE
 
-**Goal.** A layer holds several samples; each beat selects one, cycling
-independently like the note sequence.
+Replaced the planned sample-sets phase, which moved to the backlog.
 
-**Why here.** Needs the config file. Cheap after phase 2 — an event already
-names its sample, so this mostly changes which one gets named.
+`"-"` in a note or degree sequence sounds nothing there. `configs/rests.toml`
+demonstrates it.
 
-**Done when.** A single layer plays different samples across its beats, and
-a sample list whose length is coprime with the beat count phases against it.
+**Why this instead.** Listening to the phase 5 examples surfaced a real gap:
+silence could only be expressed with `active=`, which is a fixed per-cycle
+beat filter. There was no way to put a rest *in a sequence*, and a rest in a
+sequence behaves quite differently — it travels, landing on a different beat
+each cycle whenever the sequence and the beat count are different lengths.
 
-**Note.** This adds a third phasing dimension — sample sequence against note
-sequence against beat count. Probably delightful, possibly chaotic. Worth
-listening to before deciding it is a feature.
+**Settled: a marker, not a number.** 0 already means unison in semitones and
+one step below the root as a degree, so neither notation had a spare value.
+`"-5"` stays minus five; only an exact `"-"` is a rest.
+
+**Also settled: sample sets are not worth their complexity.** Making
+`samples` a third independently cycling list would give a layer three
+periods — 4 beats, 12 notes, 5 samples repeats every 15 cycles, which is
+unauthorable. One sample per layer, pitch-shifted, remains the model. If it
+ever returns, the list should be tied to the pitch sequence's length so the
+layer keeps a single period.
+
+**Also worth recording:** the per-beat "drummer's notation" and the phasing
+notation turned out to be the same model, not rival ones. A sequence whose
+length matches the beat count is a composed pattern; a different length
+phases. No new mechanism was needed for the former.
+
+`schedule()` went from a comprehension to explicit loops in the process — two
+separate reasons to skip a beat made the filter harder to read than the loop
+it replaced. Verified byte-identical across all seven reference renders.
 
 ---
 

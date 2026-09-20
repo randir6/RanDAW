@@ -74,67 +74,77 @@ def schedule(layers: list[Layer], loops: int) -> list[Event]:
     """
     lcm_beats = lcm_of_beats(layers)
 
-    # A list comprehension with three `for` clauses. Read them top to bottom
-    # as nested loops -- the first is the outermost:
+    events = []
+
+    # Written as plain nested loops rather than a comprehension. It started as
+    # one, but a second reason to skip a beat turned the filter into something
+    # harder to read than the loop it replaced. `continue` says "skip this one"
+    # far more plainly than a compound condition.
     #
-    #     for layer_idx, layer in enumerate(layers):
-    #         for loop_idx in range(loops):
-    #             for beat_idx in range(layer.beats):
-    #                 events.append(Event(...))
-    #
-    # enumerate() yields (position, item) pairs, so we get the layer's index
+    # enumerate() yields (position, item) pairs, so we get each layer's index
     # without having to count manually.
-    events = [
-        Event(
-            layer=layer_idx,
-            # Where this beat lands. Two parts added together:
-            #   loop_idx * lcm_beats     -- skip past whole completed cycles
-            #   beat_idx * (lcm // beats) -- step along within this cycle
-            # `//` is floor division (whole-number result). Plain `/` would
-            # give a float like 4.0, and we need an exact integer index.
-            # This division is always exact anyway, because the LCM is by
-            # definition a multiple of every layer's beat count.
-            pulse=loop_idx * lcm_beats + beat_idx * (lcm_beats // layer.beats),
-            # Which note this beat plays.
-            #
-            # (loop_idx * layer.beats + beat_idx) counts this layer's beats
-            # from the very start, continuing across loops rather than
-            # restarting -- so a 3-beat layer's 2nd loop starts at beat 3.
-            #
-            # `% len(layer.notes)` is the remainder after division, which
-            # wraps the counter back round to 0 when it runs off the end of
-            # the note list. With 5 notes: 0,1,2,3,4,0,1,2...
-            #
-            # Because the beat counter keeps running, a 5-note sequence on a
-            # 3-beat layer lines up differently on each cycle -- the note
-            # sequence phases against the beat count. That's not an accident
-            # of the code, it's the behaviour the vision asks for.
-            semitones=layer.notes[(loop_idx * layer.beats + beat_idx) % len(layer.notes)],
-            # Copied onto the event rather than referenced, so the event can
-            # be rendered or exported without access to the Layer.
-            sample_path=layer.sample_path,
-            gain=layer.gain,
-        )
-        for layer_idx, layer in enumerate(layers)
-        for loop_idx in range(loops)
-        for beat_idx in range(layer.beats)
-        # Beat skipping, and the entire cost of it. A comprehension can end
-        # with an `if`, which keeps only the items that pass -- so an inactive
-        # beat simply never becomes an event.
-        #
-        # Note what this does NOT do: it doesn't touch the note counter above.
-        # The note a beat plays is decided by its position in the sequence
-        # whether or not it sounds, so silencing beat 2 silences that beat's
-        # note rather than sliding the next note into its place. A layer's
-        # melody therefore stays locked to its beats, like muting a step on a
-        # drum machine rather than deleting it.
-        #
-        # The alternative -- advancing the note sequence only on beats that
-        # sound, so every note gets heard in turn -- is a real musical choice
-        # and would need the counter to change, not just a filter here. See
-        # NOTES.md.
-        if layer.active_beats is None or beat_idx in layer.active_beats
-    ]
+    for layer_idx, layer in enumerate(layers):
+        # How many pulses pass between this layer's own beats. The division is
+        # always exact, because the LCM is by definition a multiple of every
+        # layer's beat count. `//` is floor division, giving a whole number --
+        # plain `/` would give 4.0, a float, which cannot be used as an index.
+        pulses_per_beat = lcm_beats // layer.beats
+
+        for loop_idx in range(loops):
+            for beat_idx in range(layer.beats):
+                # Reason to skip #1: beat skipping. This beat of the layer is
+                # silenced, so it never becomes an event at all.
+                #
+                # Note what this does NOT do -- it doesn't touch the note
+                # counter below. The note a beat plays is decided by its
+                # position in the sequence whether or not it sounds, so
+                # silencing beat 2 silences that beat's note rather than
+                # sliding the next note into its place. Muting a step on a
+                # drum machine rather than deleting it. See NOTES.md for the
+                # alternative, which is on the backlog.
+                if layer.active_beats is not None and beat_idx not in layer.active_beats:
+                    continue
+
+                # Count this layer's beats from the very start, continuing
+                # across loops rather than restarting, so a 3-beat layer's
+                # second cycle begins at beat 3 of the sequence.
+                occurrence = loop_idx * layer.beats + beat_idx
+
+                # `%` is the remainder after division, wrapping the counter
+                # back to 0 when it runs off the end. With 5 notes the indices
+                # go 0,1,2,3,4,0,1,2...
+                #
+                # Because the counter keeps running, a 5-note sequence on a
+                # 3-beat layer lines up differently each cycle -- the sequence
+                # phases against the beat count. Give the sequence a length
+                # equal to the beat count, or a multiple of it, and you get a
+                # plainly composed pattern instead. Both are the same model.
+                semitones = layer.notes[occurrence % len(layer.notes)]
+
+                # Reason to skip #2: a rest. None marks a position in the
+                # sequence that sounds nothing.
+                #
+                # Worth seeing how this differs from beat skipping above. An
+                # inactive beat is silent on the same beat every single cycle.
+                # A rest travels with the SEQUENCE, so when the sequence and
+                # the beat count are different lengths, the silence lands on a
+                # different beat each time round.
+                if semitones is None:
+                    continue
+
+                events.append(
+                    Event(
+                        layer=layer_idx,
+                        # Two parts added: whole cycles already elapsed, plus
+                        # the step reached within this cycle.
+                        pulse=loop_idx * lcm_beats + beat_idx * pulses_per_beat,
+                        semitones=semitones,
+                        # Copied onto the event rather than referenced, so it
+                        # can be rendered or exported without the Layer.
+                        sample_path=layer.sample_path,
+                        gain=layer.gain,
+                    )
+                )
 
     # Built layer by layer above, so re-sort into time order: a schedule
     # should read like a timeline. `key` tells sort what to compare -- here a

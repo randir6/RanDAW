@@ -10,7 +10,22 @@ def lcm_of_beats(layers: list[Layer]) -> int:
     return math.lcm(*(layer.beats for layer in layers))
 
 
-def render(layers: list[Layer], loops: int, samples_per_pulse: int, sample_rate: int) -> np.ndarray:
+def _add_wrapped(buf: np.ndarray, start: int, audio: np.ndarray) -> None:
+    """Add `audio` into `buf` at `start`, wrapping past the end back to the
+    beginning. A note whose tail runs off the end carries into the next
+    repeat instead of being cut off, so the render loops without a click.
+    """
+    pos = start % len(buf)
+    while len(audio):
+        chunk = audio[: len(buf) - pos]
+        buf[pos : pos + len(chunk)] += chunk
+        audio = audio[len(chunk) :]
+        pos = 0
+
+
+def render(
+    layers: list[Layer], loops: int, samples_per_pulse: int, sample_rate: int
+) -> np.ndarray:
     """Render all layers to a single mixed-down float32 array.
 
     The shared timeline is divided into pulses: the finest grid on which
@@ -20,29 +35,23 @@ def render(layers: list[Layer], loops: int, samples_per_pulse: int, sample_rate:
     than beats of different lengths playing side by side.
     """
     lcm_beats = lcm_of_beats(layers)
-    total_pulses = loops * lcm_beats
-    total_samples = total_pulses * samples_per_pulse
+    total_samples = loops * lcm_beats * samples_per_pulse
 
     mix = np.zeros(total_samples, dtype=np.float32)
 
     for layer in layers:
-        sample = load_sample(layer.sample_path, sample_rate)
+        sample = load_sample(layer.sample_path, sample_rate) * layer.gain
+        shifted = {semitones: pitch_shift(sample, semitones) for semitones in set(layer.notes)}
         pulses_per_beat = lcm_beats // layer.beats
-        layer_buf = np.zeros(total_samples, dtype=np.float32)
 
         for loop_idx in range(loops):
             for beat_idx in range(layer.beats):
                 occurrence = loop_idx * layer.beats + beat_idx
-                semitones = layer.notes[occurrence % len(layer.notes)]
-                note_audio = pitch_shift(sample, semitones)
-
                 pulse_idx = loop_idx * lcm_beats + beat_idx * pulses_per_beat
-                start = pulse_idx * samples_per_pulse
-                end = min(start + len(note_audio), total_samples)
-                if end > start:
-                    layer_buf[start:end] += note_audio[: end - start]
+                _add_wrapped(
+                    mix,
+                    pulse_idx * samples_per_pulse,
+                    shifted[layer.notes[occurrence % len(layer.notes)]],
+                )
 
-        mix += layer_buf
-
-    mix /= len(layers)
     return mix

@@ -148,8 +148,12 @@ diagram and is where the whole idea lives.
 ## Where things stand
 
 Phases 1–6 are done: N layers, cycle-based tempo, the schedule/audio split,
-beat skipping, TOML configs, scales, and rests. Phase 7 is drift, 8 is
-per-layer effects, 9 MIDI export, 10 a web visualiser.
+beat skipping, TOML configs, scales, and rests.
+
+**The plan was resequenced to reach a GUI sooner**, because the feedback loop
+is the bottleneck on everything else. Next up: extract a `Piece` (7), schedule
+as JSON (8), a static visualiser (9), then live editing (10). Sections, drift,
+effects and MIDI follow. See `PHASES.md`.
 
 **Three things worth knowing before picking up:**
 

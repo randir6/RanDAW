@@ -175,74 +175,186 @@ it replaced. Verified byte-identical across all seven reference renders.
 
 ---
 
-## Phase 7 — Drift (arc item 3)
+## Re-planned: get to a GUI sooner
 
-**Goal.** Layers that slowly fall out of phase instead of repeating exactly.
+Decided after the first session. The bottleneck on everything else is the
+feedback loop — editing TOML, running the CLI and opening a WAV is slow, and
+several open questions (rest behaviour, what sections should do, whether the
+phasing is musically useful) are far easier to answer by *seeing* the thing
+than by reasoning about it.
 
-**Why here.** Deliberately after the length guard and the config file,
-because drift is where the fixed-length-vs-streaming fork has to be settled
-for real, and by then there will be actual experience to settle it with.
+So drift, effects and MIDI move back, and two small prerequisites plus the
+GUI itself move forward. Sections moves ahead of drift but stays behind the
+GUI, because the GUI makes designing it much easier.
 
-**Open.** The fork itself. Drift inside a fixed render is a transform on
-event times. Drift as an endless process is a different program shape.
-Do not start this phase without deciding which.
-
----
-
-## Phase 8 — Per-layer effects (arc item 4)
-
-**Goal.** Envelope/ADSR, filtering, reverb applied per layer before mixdown.
-
-**Why here.** Effects need per-layer audio buffers, which phase 1
-deliberately does not keep (a redundant buffer was removed during QA — the
-right call then, and this is the phase that legitimately brings it back).
-
-Start with envelope: it is the cheapest and fixes the bluntest thing about
-the current sound, which is that every beat plays the whole sample flat.
-
-**Open.** Reverb almost certainly means a new dependency or a hand-rolled
-convolution. Ask first.
+The visualiser was always arc item 7 in VISION.md, so this is a resequencing
+rather than a change of scope.
 
 ---
 
-## Phase 9 — MIDI export
+## Phase 7 — Extract a Piece
 
-**Goal.** Write the schedule as MIDI instead of audio.
+**Goal.** Move settings resolution out of `generate.py`'s `main()` and into
+the package, so a second front end can reuse it.
 
-**Why here.** Could be pulled forward cheaply — after phase 2 the schedule
-is most of the work, and pitch is already in semitones. Placed late only
-because the audio path is where the listening happens.
+```python
+# polyrhythm/piece.py
+@dataclass(frozen=True)
+class Piece:
+    layers, loops, samples_per_pulse, sample_rate
+    # derived: lcm_beats, total_pulses, cycle_duration, total_duration
 
-**Open.** `mido` vs `pretty_midi` — a new dependency either way. How scale
-degrees map to MIDI note numbers (a key/root has to become a concrete
-pitch).
+def build_piece(layers, settings) -> Piece     # raises PieceError
+```
+
+**Why this first, and why it is not optional.** About sixty lines of `main()`
+currently do the work of turning "what the user asked for" into "what to
+render": merging CLI over config, choosing between cycle and pulse duration,
+computing `samples_per_pulse`, rounding, the length guard. Every branch of it
+calls `parser.error()`, so it is welded to argparse. A GUI would have to
+reimplement all of it, and the two copies would drift the first time either
+changed — exactly the problem `make_layer()` was extracted to solve for
+layers.
+
+**Done when.** `generate.py` is argparse → merge → `build_piece` → `schedule`
+→ `render_audio` → write, and the reference renders are byte-identical.
+
+**Open.** Whether `Piece` should hold a list of sections from the start
+(empty or one-element for now) so phase 11 is additive rather than a reshape.
+Cheap foresight if so; do not build section *behaviour* here.
 
 ---
 
-## Phase 10 — Web GUI and visualiser (arc item 7)
+## Phase 8 — Schedule as data
 
-**Goal.** A browser view where shapes move in time with the layers, and
-edits re-render.
+**Goal.** Give the schedule a machine-readable form, and give an `Event`
+enough context to draw.
 
-**Shape, from the phase 2 measurements.** No real-time audio engine is
-needed. Send the schedule as JSON and let the browser animate from it
-against playback position of a pre-rendered WAV. Renders are 7–30 ms, so
-recalculate-and-push is comfortably interactive.
+- Add `beat` to `Event` — which of its layer's own beats it is. A drawing of
+  "beat 3 of 5" cannot be derived from `pulse` alone without the Layer.
+- A `schedule_json(piece)` producing timing (cycle duration, total duration,
+  LCM, loops), layer metadata (beat count, sample name), and events with both
+  pulse and seconds.
+- Expose it: `--dump-schedule --json`, or a separate flag.
 
-The real constraint is not compute but output size: the coprime worst case
-renders in 173 ms but produces a ~50 MB file. The phase 2 length guard is
-what keeps that from reaching the browser.
+**Why here.** The visualiser needs exactly this and nothing more. Splitting
+it out means the GUI phase is purely about the browser, not about inventing a
+data format at the same time.
 
-**Open.** Web framework choice — a new dependency, so ask. Whether the GUI
-edits config files directly or owns its own state and exports.
+**Done when.** The JSON round-trips, its event count matches the schedule,
+and its times match `--dump-schedule`.
+
+**Size.** Small. The `beat` field was already on the backlog.
+
+---
+
+## Phase 9 — Static visualiser
+
+**Goal.** `--visualise out.html` writes one self-contained file: the schedule
+inlined as JSON, the render inlined as a base64 data URI, and a page that
+animates the polyrhythm in time with the audio. Open it in a browser, press
+play, watch and listen. No server, no process, no new dependency.
+
+**Shape.** Concentric rings, one per layer, each divided into that layer's
+beat count. All rings are the same cycle, which is what makes the polyrhythm
+visible: a 3-ring and a 4-ring fill the same circle. A hand sweeps once per
+cycle; a beat flashes as it sounds; rests and inactive beats are drawn
+differently so the distinction is finally visible rather than explained.
+
+**Why static first.** The genuinely new work is the drawing and the
+audio-to-animation sync. Doing that with no server means debugging one new
+thing instead of two. The result is also shareable and survives the session.
+
+**Sync.** Drive the animation from the `<audio>` element's `currentTime`
+inside `requestAnimationFrame`, never from a separate timer, or the two drift
+apart within seconds.
+
+**Size check.** A 16-second render is 1.41 MB raw, 1.88 MB as base64 —
+fine inline. A two-minute render would be ~14 MB, which is silly; warn past a
+threshold rather than refusing.
+
+**Done when.** Opening the file plays the render with the rings moving in
+time. Verifiable here with the pre-installed Chromium via Playwright, so it
+can be screenshotted rather than assumed.
+
+**Then immediately:** use it on `configs/rests.toml` to settle the open
+question about rest behaviour. Watching a rest walk round a ring should
+answer in seconds what prose has not.
+
+---
+
+## Phase 10 — Live editing
+
+**Goal.** `python3 serve.py`, open localhost, change something, hear it.
+
+**Dependency.** None needed. Python's stdlib `http.server` is entirely
+adequate for one user on localhost, which sidesteps the web-framework
+question. Revisit only if it actually hurts.
+
+**Flow.** Page POSTs a piece as JSON → `build_piece` → `schedule` +
+`render_audio` → respond with schedule JSON and a WAV. Renders measured at
+7–30 ms, so this is comfortably interactive without any real-time audio
+engine.
+
+**Controls.** Cycle duration, loops, and per layer: beats, gain, active
+beats, pitch sequence, scale, root.
+
+**Saving.** Initially show the equivalent TOML in a panel to copy out. That
+dodges the config-writing problem entirely — `tomllib` only reads — and
+defers the decision about whether to add a writer.
+
+**Open.** Whether the GUI edits config files directly or holds its own state
+and exports.
+
+---
+
+## Phase 11 — Sections (from the backlog)
+
+Variations across cycles: same polyrhythmic base, different active beats,
+scale or notes per bar. Design notes are in NOTES.md.
+
+**Why after the GUI.** It is the largest musical gap, but it is also the
+hardest thing to design blind, and a working visualiser makes "what should
+four bars of variation look like" a question you can answer by looking. Note
+that phase 7 may make `Piece` section-shaped in advance so this is additive.
+
+---
+
+## Phase 12 — Drift (arc item 3)
+
+Layers that slowly fall out of phase rather than repeating exactly. This is
+where the fixed-length-versus-streaming fork has to be settled for real.
+Sections and drift are two answers to the same musical question, so decide
+whether both are wanted before building the second.
+
+---
+
+## Phase 13 — Per-layer effects (arc item 4)
+
+Envelope first: every beat currently plays the whole sample flat, which is
+the bluntest thing about the sound. Then filtering, reverb.
+
+Independent of everything above, so it can be pulled forward at any point if
+the sound quality starts to annoy more than the feedback loop does. Effects
+need per-layer buffers, which phase 1 deliberately does not keep.
+
+**Open.** Reverb means a new dependency or a hand-rolled convolution.
+
+---
+
+## Phase 14 — MIDI export
+
+The schedule is most of the work, and pitch is already in semitones. `mido`
+or `pretty_midi`, a new dependency either way.
 
 ---
 
 ## Cross-cutting, not phased
 
 - **Real samples.** Everything so far is verified with synthetic test tones.
+- **Rest behaviour** is an open question — see NOTES.md. Phase 9 is the tool
+  for answering it.
 - **Known limitations** — aliasing on large upward shifts, mono-only,
   hand-set levels — are recorded in NOTES.md with measurements.
-- **`qa_check.py` grows with each phase.** It is currently the largest file
-  in the project, which is the correct shape for something whose output is
-  judged by ear.
+- **`qa_check.py` grows with each phase.** It is the largest file in the
+  project, which is the correct shape for something judged by ear.

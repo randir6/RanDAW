@@ -116,7 +116,7 @@ function check(spec, name) {
       `${MAX_SECONDS} s. Use fewer loops or a shorter cycle.`, "error");
     return null;
   }
-  return { piece, derived: pieceToDerived(piece), mix: null, peak: 0, wav: null };
+  return { piece, derived: pieceToDerived(piece), mix: null, peak: 0, wav: null, print: null };
 }
 
 // Make a checked piece's sound, and its WAV file. The slow part of an edit.
@@ -125,7 +125,9 @@ function sound(made) {
   const events = schedule(piece.layers, piece.loops, { audible: piece.audible });
   if (voices.size > MAX_VOICES) voices.clear();
   const { mix, peak } = finishMix(renderAudio(events, { ...piece, library, cache: voices }));
-  Object.assign(made, { mix, peak, wav: encodeWav16(mix, piece.sampleRate) });
+  const wav = encodeWav16(mix, piece.sampleRate);
+  // The fingerprint is worked out once here, not on every redraw.
+  Object.assign(made, { mix, peak, wav, print: fnv1a(wav) });
 }
 
 // Everything worth telling the person about the piece as it stands: rounding,
@@ -300,10 +302,9 @@ function show() {
 
 // The audio fingerprint under "The grid as text", once the sound is made.
 function showFingerprint() {
-  if (state.made.wav === null) return;
-  const print = fnv1a(state.made.wav);
-  $("fingerprint").textContent = print;
-  document.documentElement.dataset.audioFingerprint = print;
+  if (state.made.print === null) return;
+  $("fingerprint").textContent = state.made.print;
+  document.documentElement.dataset.audioFingerprint = state.made.print;
 }
 
 // Choose a sequence step to edit (step null clears the choice).
@@ -328,9 +329,18 @@ function refresh() {
 
 // Called by the browser before each screen refresh, about 60 times a second,
 // for as long as the piece plays. Everything visual follows the audio clock.
+// `ticking` makes sure only one such loop ever runs: pressing Play, Pause and
+// Play quickly could otherwise start a second one alongside the first.
+let ticking = false;
 function tick() {
   refresh();
   if (player.isPlaying()) requestAnimationFrame(tick);
+  else ticking = false;
+}
+function startTicking() {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(tick);
 }
 
 async function togglePlay() {
@@ -339,7 +349,7 @@ async function togglePlay() {
     refresh();
   } else {
     await player.play();
-    requestAnimationFrame(tick);
+    startTicking();
   }
 }
 

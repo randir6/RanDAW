@@ -201,14 +201,20 @@ export function createPlayer() {
     silence?.pause();  // ?. -- only if it was ever made
   }
 
-  // Jump to a position (in cycles), carrying on playing if we were.
+  // Jump to a position (in cycles), carrying on playing if we were. While
+  // playing, the jump is immediate: the audio is already running, so there is
+  // nothing to wait for, and playback never stops even for a moment.
   function seek(cycles) {
-    const wasPlaying = playing;
-    stop();
     const loops = latest?.loops ?? 1;
     // % in JavaScript can return a negative number, so add the length on.
-    heldAt = ((cycles % loops) + loops) % loops;
-    if (wasPlaying) play();
+    const target = ((cycles % loops) + loops) % loops;
+    if (!playing) {
+      heldAt = target;
+      return;
+    }
+    for (const t of [sounding, pending]) if (t !== null) t.source.stop();
+    pending = null;
+    sounding = startTrack(latest, ctx.currentTime, target);
   }
 
   return {

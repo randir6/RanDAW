@@ -204,6 +204,16 @@ test("editing: while playing, an edit waits for the next cycle and playback carr
     assert.equal((await page.evaluate("({ ...document.documentElement.dataset })")).error, undefined);
   }));
 
+test("editing: jumping while playing carries on playing from the new place", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await click(page, "#play");
+    await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 0.3");
+    await click(page, "#next");  // the next page: cycles 5-8, starting at 8 s
+    await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 8.3");
+    assert.equal(await page.evaluate("document.getElementById('play').textContent"), "Pause");
+    assert.equal(await page.evaluate("document.getElementById('window').textContent"), "cycles 5–8 of 8");
+  }));
+
 // --- Where an edit comes in (no browser needed) ---------------------------------------
 
 test("an edit comes in at the next cycle, continuing the cycle count", () => {

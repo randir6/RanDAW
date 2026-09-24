@@ -246,6 +246,10 @@ the spec round-trips.
 **Goal.** `--visualise out.html`: one self-contained file with the grid and
 the audio inlined. Open, press play, watch and listen.
 
+**Purpose.** To see the whole piece: every note, rest and inactive beat, and
+above all *where they fall relative to each other* across layers. The
+cross-layer alignment is the point, not a side effect.
+
 **Shape: step notation, not rings.** One row per layer. Each row spans one
 cycle and is divided into that layer's beats, so columns line up in *time*:
 a 3-row and a 4-row meet only on the downbeat, which is the polyrhythm made
@@ -253,14 +257,31 @@ visible — the same property the rings had, in a form that reads like drummer
 notation. Several cycles side by side, so phasing and travelling rests show
 up as visible patterns across bars.
 
+**Relative placement is made explicit.** A playhead runs down through every
+row at once. Where two or more layers sound on the same instant, a faint
+vertical line joins them, so coincidences and near-misses read at a glance.
+
+**Cells.** Degree layers show the degree number; drum layers whose notes are
+all 0 show a hit mark `x`; other semitone layers show the number. Rests get a
+rest symbol; inactive beats are dimmed and empty, so the two kinds of silence
+look different.
+
+**Pitch as height.** Each mark sits higher or lower within its row by pitch,
+so melodic contour reads as a shape, the way it would on a stave. The range is
+per layer — each layer's lowest and highest pitch span its own row — because a
+shared range would flatten a narrow melody next to a wide one. Drum layers stay
+flat.
+
 **A window of four cycles** that pages with playback, rather than the whole
 render. Horizontal density is the real limit: a 16-beat layer across 8
 cycles is 128 cells, about 11 px each on a laptop — too narrow for a number.
 
-**Layer cap: 5, in the visualiser only.** VISION.md forbids a layer limit in
-the core data model, so `Piece`, `Layer` and the renderer stay unlimited. The
-cap is one constant and one check, with row layout computed from the layer
-count rather than hard-coded, so lifting it is a one-line change.
+**Layer cap: 5, in the visualiser only, and it refuses rather than
+truncates** — a layer you can hear but not see would make the page
+untrustworthy. VISION.md forbids a layer limit in the core data model, so
+`Piece`, `Layer` and the renderer stay unlimited. The cap is one constant and
+one check, with row layout computed from the layer count rather than
+hard-coded, so lifting it is a one-line change.
 
 **No musical logic in JavaScript.** Python produces the fully resolved grid;
 the page only draws it. Otherwise the scheduling would be reimplemented in a
@@ -283,8 +304,9 @@ spot, and it is what makes the page verifiable here: headless Chromium, no
 new dependency. It needs `--headless=new` plus render-wait flags — the naive
 invocation silently wrote blank images while reporting success.
 
-**Done when.** Screenshots at several `?t` values agree with the grid JSON.
-Then use it on `configs/rests.toml` to settle the open question.
+**Done when.** Screenshots at several `?t` values agree with the grid JSON,
+for every example config. The open question about rest behaviour is one of
+the first things to look at with it, but it is one question among many.
 
 ---
 
@@ -294,8 +316,9 @@ The first draft of phases 7–9 had two faults that would have surfaced only
 at the end:
 
 1. **The event list cannot show silence.** Rests and inactive beats produce
-   no events, so the visualiser — whose headline job was to show where rests
-   land — would have had nothing to draw. Hence the grid in phase 8.
+   no events, so a visualiser meant to show the whole piece — notes and
+   silences and how they sit against each other — would have been missing
+   half of it. Hence the grid in phase 8.
 2. **A Piece cannot round-trip.** Degrees, scale and root are resolved to
    semitones when a layer is built, by design, so a Piece can only be written
    back as semitones and the GUI could never change a scale. The half of the

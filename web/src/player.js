@@ -85,7 +85,9 @@ export function createPlayer() {
   function bufferOf(track) {
     if (!track.buffer) {
       track.buffer = ctx.createBuffer(1, track.samples.length, track.sampleRate);
-      track.buffer.copyToChannel(track.samples, 0);
+      // getChannelData().set() rather than copyToChannel(): the same result,
+      // and supported by older Safari too.
+      track.buffer.getChannelData(0).set(track.samples);
     }
     return track.buffer;
   }

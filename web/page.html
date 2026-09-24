@@ -65,6 +65,13 @@
   }
 
   * { box-sizing: border-box; }
+  /* Taps act at once. Browsers otherwise wait to see whether a tap is the
+     first half of a double-tap zoom, and quick taps on beats or + buttons
+     would zoom the page. Pinch-to-zoom still works. */
+  html { touch-action: manipulation; }
+  /* No grey flash over the drawing when it is tapped; the drawing itself
+     changes, which is feedback enough. */
+  .stage { -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; padding: 20px 24px 32px;
     background: var(--page); color: var(--ink);
@@ -131,6 +138,12 @@
   .hit circle { fill: transparent; stroke: none; }
   .rest-glyph { fill: var(--ink-2); }
   .mark.on { transform: scale(1.35); }
+  /* For anyone who has asked their device for less motion: notes still light
+     up as they sound, without growing. */
+  @media (prefers-reduced-motion: reduce) {
+    .mark { transition: none; }
+    .mark.on { transform: none; }
+  }
   .mark.on circle { stroke: var(--ink); }
 
   /* Where two or more layers sound at the same instant. */
@@ -194,6 +207,10 @@
     background: color-mix(in srgb, var(--c) 18%, var(--surface));
   }
   .tile.rest { background: var(--surface); color: var(--muted); border-style: dashed; }
+  /* Browsers too old for color-mix() (above) keep this plainer tint. */
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .tile { background: var(--row); }
+  }
   .tile.selected { outline: 3px solid var(--ink); outline-offset: 1px; }
   .grow { min-width: 36px; padding: 6px 8px; }
   .sequence-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -211,6 +228,10 @@
   summary { cursor: pointer; color: var(--ink-2); }
   pre { font-size: 13px; line-height: 1.6; overflow-x: auto; background: var(--surface); padding: 12px; border-radius: 10px; }
   .small { color: var(--muted); font-size: 13px; }
+  /* Last, so nothing above overrides it: iPhones zoom the whole page into any
+     text box or menu whose text is smaller than 16px when it is tapped. At
+     16px they leave it alone. */
+  input, select { font-size: 16px; }
 </style>
 </head>
 <body>

@@ -19,6 +19,12 @@ import { formatSpec, readSpec, SpecError } from "./spec.js";
 import { createView, MAX_LAYERS } from "./view.js";
 import { decodeWav, encodeWav16 } from "./wav.js";
 
+// Two things this code relies on arrived in Safari only in 2022 (iOS 15.4).
+// For older devices, simple stand-ins -- the pieces here are plain JSON-style
+// data, which is all these need to handle.
+Object.hasOwn ??= (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+globalThis.structuredClone ??= (value) => JSON.parse(JSON.stringify(value));
+
 // The page exactly as it arrived, before anything was drawn into it. "Save
 // page" copies this with a different piece inside, so a shared page is the
 // same program as this one. It has to be read first thing, while nothing has

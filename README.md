@@ -12,8 +12,20 @@ where the work got to.**
 ```bash
 pip install -r requirements.txt        # numpy + soundfile, Python 3.11+
 python3 generate.py --config configs/tresillo.toml --out tresillo.wav
-python3 qa_check.py                    # 85 checks, should all pass
+python3 qa_check.py                    # 116 checks, should all pass
 ```
+
+To **see** it as well as hear it:
+
+```bash
+python3 generate.py --config configs/rests.toml --visualise rests.html
+```
+
+Open `rests.html` in any browser and press play. One row per layer, each
+spanning a cycle, with a playhead running through all of them — notes, rests
+and switched-off beats, and where they fall against each other. The file is
+self-contained (audio included), so it can be emailed or opened offline.
+Up to five layers.
 
 Six example configs in `configs/`, all commented and meant to be edited:
 
@@ -34,8 +46,10 @@ python3 generate.py --layer "8:0:samples/kick.wav:active=1,4,7" \
                     --loops 4 --out quick.wav
 ```
 
-`--dump-schedule` prints every note a render will place, with times. It is the
-fastest way to see what a config actually does without listening.
+`--dump-schedule` prints every note a render will place, with times.
+`--export-json piece.json` writes the whole piece — what you wrote, plus every
+beat of every layer worked out — for other programs; `--config piece.json`
+reads it back and renders the identical file.
 
 ## Glossary
 
@@ -55,6 +69,11 @@ its first beat. **The cycle is the bar.** Its length is the thing you set
 (`cycle_duration`), and every layer divides it. Adding a layer subdivides the
 same span rather than stretching it — that was a real bug once, caught by ear,
 and there is a regression check for it now.
+
+**Cell** — one beat of one layer in one cycle, whatever happens there: a
+note, a rest, or a switched-off beat. The *grid* is every cell of a piece;
+the *schedule* is just the cells that sound. A picture needs the grid,
+because silence is half of a rhythm.
 
 **Loop** — a repeat of the cycle in the output. `loops = 8` renders eight
 cycles. *Note: `loops` and `cycle` mean the same unit, which is a naming wart
@@ -76,7 +95,7 @@ piece could be four bars with the same skeleton and different detail. Top of
 the backlog in `NOTES.md`.
 
 **Drift** — **not built.** Gradual timing shift so layers slowly fall out of
-alignment rather than repeating exactly. Phase 7. Note that sections and drift
+alignment rather than repeating exactly. Phase 12. Note that sections and drift
 are two answers to the same musical question (variation over time), and it is
 worth deciding which you want before building either.
 
@@ -100,6 +119,12 @@ different beat each cycle.
 an inactive beat is silent on the same beat *every* cycle. That is the
 difference from a rest, and it is the distinction worth keeping straight.
 
+**Spec and Piece** — the spec is what you wrote (degrees, scale, `"-"`,
+beats counted from 1); the Piece is what it means once worked out
+(semitones, positions from 0, exact timing). A config file, a `--layer`
+string and a JSON export are all specs. Saving always saves the spec, since
+a Piece has forgotten which scale its semitones came from.
+
 **Root** — a semitone offset applied to a whole layer. Deliberately not a key
 name like "D", because these are pitch shifts applied to samples whose own
 pitch is unknown, so naming a key would be a fiction.
@@ -107,14 +132,19 @@ pitch is unknown, so naming a key would be a fiction.
 ## How the code is laid out
 
 ```
-generate.py          the CLI — argument parsing, validation, writing the file
+generate.py          the CLI — arguments in, files out, errors as sentences
 polyrhythm/
-  schedule.py        WHEN every note happens. No audio here at all.
-  render.py          turns a schedule into sound. Knows nothing about layers.
-  layer.py           what a layer is + parsing one from a --layer string
+  spec.py            reading a spec (TOML or JSON) and checking what it says
+  layer_arg.py       a --layer string turned into a spec entry
+  piece.py           build_piece(): spec in, fully worked-out Piece out
+  layer.py           what a layer is, and the rules a valid one follows
   scales.py          scale degrees to semitones. Plain integer arithmetic.
-  config.py          reading a piece from TOML
-qa_check.py          85 checks, run as a plain script (no pytest)
+  schedule.py        WHEN every beat happens — grid() and schedule(). No audio.
+  render.py          turns a schedule into sound. Knows nothing about layers.
+  export.py          a Piece as JSON: the spec plus everything derived from it
+  visualise.py       fills in the page template with the piece and its audio
+  visualiser.html    the page: plain HTML, SVG and JavaScript, no framework
+qa_check.py          116 checks, run as a plain script (no pytest)
 make_samples.py      regenerates samples/ — reproducible, seeded RNG
 configs/             example pieces
 samples/             six synthetic one-shots so it works out of the box
@@ -147,18 +177,19 @@ diagram and is where the whole idea lives.
 
 ## Where things stand
 
-Phases 1–6 are done: N layers, cycle-based tempo, the schedule/audio split,
-beat skipping, TOML configs, scales, and rests.
+Phases 1–9 are done: N layers, cycle-based tempo, the schedule/audio split,
+beat skipping, TOML configs, scales, rests, the spec/Piece split, JSON export,
+and a visualiser that plays in time with its drawing.
 
-**The plan was resequenced to reach a GUI sooner**, because the feedback loop
-is the bottleneck on everything else. Next up: extract a `Piece` (7), schedule
-as JSON (8), a static visualiser (9), then live editing (10). Sections, drift,
-effects and MIDI follow. See `PHASES.md`.
+Next up is live editing (10): a local page where you change something and
+hear it straight away. Sections, drift, effects and MIDI follow. See
+`PHASES.md`.
 
 **Three things worth knowing before picking up:**
 
 1. **Rest behaviour is under question** — see Open questions at the top of
-   `NOTES.md`. Understand it before building on it.
+   `NOTES.md`. Understand it before building on it. Visualising
+   `configs/rests.toml` is now the quickest way in.
 2. **Sections is top of the backlog**, above the remaining numbered phases.
    It is probably the largest musical gap.
 3. **Nobody has run this with real samples yet.** Everything so far is

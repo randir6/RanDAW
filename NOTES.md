@@ -76,6 +76,11 @@ changing anything. `configs/rests.toml` is the place to start — try making
 the sequence exactly as long as the beat count, which pins the rest in place,
 and compare. `--dump-schedule` shows exactly where each rest falls.
 
+**Since phase 9 you can see it rather than work it out.** `python3 generate.py
+--config configs/rests.toml --visualise rests.html` and open the page: the
+rest marks wander across the pluck row (7 steps over 5 beats) and the kick row
+(6 over 8), but stay put on the bell's (3 over 3). Still no behaviour changed.
+
 Possible outcomes, none decided: current behaviour is right and just needs
 demonstrating better; rests should be fixed to a beat like `active` is; or
 both behaviours are wanted and it becomes a per-layer choice. Related: the
@@ -109,7 +114,7 @@ Design notes from thinking it through, so the work does not start cold:
   get inconsistent. Something closer to: declare the layers once, then
   per-section state only what differs.
 - **Section length wants to be in cycles**, since the cycle is the bar.
-- **Interacts with drift (phase 7).** Sections are deliberate variation;
+- **Interacts with drift (phase 12).** Sections are deliberate variation;
   drift is gradual variation. They are different answers to the same
   musical problem and it is worth deciding whether they coexist or whether
   one makes the other redundant before building the second one.
@@ -152,8 +157,12 @@ Design notes from thinking it through, so the work does not start cold:
   rather than a stated choice.
 - **Per-note velocity.** Gain is per-layer. Per-event gain would allow
   accents, and `Event` already carries a gain field that could vary.
-- **A `beat` field on `Event`.** Would make `--dump-schedule` readable
-  without mental arithmetic, and a visualiser will want it.
+- **More than five layers in the visualiser.** The cap is `MAX_LAYERS` in
+  `visualise.py`, and rows are laid out from the layer count, so lifting it
+  is a one-line change plus a look at whether a sixth row still fits a
+  laptop screen. Needs a sixth palette colour, validated like the others.
+- **A beat column in `--dump-schedule`.** `Event` has carried `beat` since
+  phase 8, but the dump still prints only pulses.
 - **Rename `loops` to `cycles`.** They are the same unit, and having two
   words for it is the one genuinely confusing bit of vocabulary. Not renamed
   because every config and example uses `loops`; would want doing in one go,
@@ -226,3 +235,34 @@ Design notes from thinking it through, so the work does not start cold:
   the spec's `--sample1`/`--sample2`, which would not extend past two layers.
 - **A "pulse" is the LCM grid**, the finest subdivision on which every layer's
   beats land — not any single layer's beat spacing.
+
+- **A spec is what the user wrote; a Piece is what it means.** The spec keeps
+  degrees, scale, 1-based beats and rests, and round-trips through TOML and
+  JSON unchanged. The Piece has them resolved and is what gets rendered.
+  `build_piece()` is the only way from one to the other, and both the CLI and
+  config files go through it — `--layer` strings become spec entries first.
+  Resolving loses information by design, which is why a GUI must save the
+  spec, never the Piece.
+- **A spec with both `cycle_duration` and `pulse_duration` is refused**,
+  rather than one quietly winning. On the command line, either tempo flag
+  replaces whichever the config chose, because an override is explicit.
+- **Warnings are data.** `build_piece()` returns them on the Piece rather than
+  printing, so a GUI can show them its own way. The CLI prints them.
+- **One loop, two views.** `grid()` yields every layer x cycle x beat with a
+  status (note, rest, inactive); `schedule()` keeps just the notes. Written
+  as one generator so the rules for what sounds exist once.
+- **Numbering in the JSON export:** counts a musician says aloud (cycle,
+  beat) start at 1; list positions (layer, step) start at 0.
+- **No musical logic in the visualiser's JavaScript.** Python works out every
+  cell's label, height, position and every coincidence; the page only draws.
+  Otherwise the rules would exist twice, once untested.
+- **The page embeds only the derived half**, not the spec, so a shared page
+  does not carry the paths to your sample folders.
+- **Web Audio, not `<audio loop>`,** because the audio element leaves a gap at
+  the loop point. The drawing follows the audio clock, not its own timer.
+- **The visualiser refuses more than five layers rather than dropping some.**
+  A layer you can hear but not see would make the rest of the page
+  untrustworthy. The limit is the visualiser's alone; audio is unlimited.
+- **Check screenshots by looking at them.** Headless Chromium wrote blank
+  images while reporting success until given `--headless=new` and the
+  render-wait flags.

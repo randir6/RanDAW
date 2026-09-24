@@ -192,7 +192,7 @@ rather than a change of scope.
 
 ---
 
-## Phase 7 — Spec and Piece
+## Phase 7 — Spec and Piece — DONE
 
 *Revised after a critical review of the first draft — see "Why the plan
 changed" below.*
@@ -206,7 +206,7 @@ both out of `generate.py`'s `main()`.
   same shape, so there is one path, not two.
 - **Piece** — what gets rendered: resolved semitones, 0-based indices,
   `samples_per_pulse`, derived timing. Built by `build_piece(spec)`, which
-  raises `PieceError` and returns warnings as data rather than printing them,
+  raises `SpecError` and returns warnings as data rather than printing them,
   because a GUI does not want stdout.
 
 `generate.py` becomes: argparse → spec (CLI merged over file) → `build_piece`
@@ -220,9 +220,16 @@ with the caller, since it is policy rather than maths.
 **Done when.** The reference renders are byte-identical, and a spec survives
 TOML → dict → JSON → dict unchanged.
 
+**How it landed.** `config.py` became `spec.py` (reading and checking a spec),
+`piece.py` (`Piece` and `build_piece`) and `layer_arg.py` (a `--layer` string
+to a spec entry). `layer.py` kept only the data model and its rules, so each
+rule now lives in exactly one place — a duplicated notes-or-degrees check was
+caught by the checks disagreeing about the wording. A spec naming both tempo
+settings is refused. All 13 reference renders byte-identical.
+
 ---
 
-## Phase 8 — The grid
+## Phase 8 — The grid — DONE
 
 **Goal.** A view of the piece that includes the silences.
 
@@ -239,9 +246,15 @@ plus the derived timing, layer metadata and cells (the half that doesn't).
 cycle × beat has exactly one cell; rests and inactive beats appear as cells;
 the spec round-trips.
 
----
+**How it landed.** `--export-json FILE` writes `{format, version, spec,
+derived}`; `--config` reads the same file back and renders byte-identically,
+from any folder, because sample paths are rewritten relative to where the
+JSON is saved. `derived` also carries each cell's label, height and position
+in its cycle, and the list of instants where two or more layers sound
+together — everything a display needs, worked out and tested in Python.
+Counts said aloud (cycle, beat) are 1-based; list positions are 0-based.
 
-## Phase 9 — Static visualiser
+## Phase 9 — Static visualiser — DONE
 
 **Goal.** `--visualise out.html`: one self-contained file with the grid and
 the audio inlined. Open, press play, watch and listen.
@@ -307,6 +320,31 @@ invocation silently wrote blank images while reporting success.
 **Done when.** Screenshots at several `?t` values agree with the grid JSON,
 for every example config. The open question about rest behaviour is one of
 the first things to look at with it, but it is one question among many.
+
+**How it landed.** `polyrhythm/visualise.py` fills in
+`polyrhythm/visualiser.html`, a template of plain HTML, SVG and commented
+JavaScript. Settled while building it:
+
+- The window is four cycles, but shrinks when a layer has so many beats that
+  a cell would be narrower than 20 px — a 24-beat layer gets two cycles.
+- Five colours, run through a colourblind-safety validator in light and dark
+  mode. Colour is never the only cue: every row is also named, and marks
+  differ in shape (circle, x, bar).
+- Legend glyphs are grey, not a layer's colour, so the legend never implies
+  that one layer is special.
+- Drums get no `seq` line unless they contain rests; a row of x's said
+  nothing the row did not.
+- The playhead passes *behind* the marks, so a note stays readable while it
+  sounds.
+- Hover any mark for its layer, cycle, beat, time and pitch. Space plays and
+  pauses, clicking the grid jumps there, and the arrow keys change page.
+- A collapsed text view of the grid sits under the drawing, for reading
+  exact values and for screen readers.
+
+Verified by eye on screenshots of all six example configs, plus a 5-layer
+piece with a 24-beat hat, and in dark mode — each checked against the grid.
+`qa_check.py` also loads a page in headless Chromium and checks it draws
+exactly the notes in the grid (skipped when no Chromium is present).
 
 ---
 

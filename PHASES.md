@@ -508,6 +508,34 @@ made one check fail about one run in three under load.
 
 ---
 
+## After phase 11: polish, measured
+
+Work done without new decisions, each change its own commit:
+
+- **Speed.** Measured first: an edit spent its time making sound and writing
+  the WAV, not drawing. Sounds are now reused between edits and the encoder
+  is faster (a one-line rule proved equal to the old one on 6.4 million
+  values), halving the work -- with every WAV still byte-identical to the
+  recorded answers. Then each edit redraws at once and makes its sound just
+  after: from tap to screen went from 45 ms to 6 ms for tresillo, and from
+  about 250 ms to 20 ms for a dense two-minute piece.
+- **Phone and iPad.** No zoom when tapping a text box or quick taps; older
+  Safari supported; "reduce motion" honoured.
+- **Found by reading the code:** the fingerprint was rehashed on every
+  redraw; two animation loops could run at once; a refused change left its
+  control showing the value that did not happen.
+- **New:** an On row of beat buttons per card; duplicate layer; a name for
+  the piece; how many cycles each pattern takes to come round, with a button
+  to make the loops a whole number of repeats.
+- **Design:** Play stands out, saving is grouped at the right, the piece's
+  settings have their own panel; quiet text now meets the WCAG contrast
+  standard in both themes.
+- **Checks:** 72, adding thousands of random edits against rules that must
+  always hold, and a check that the engine never depends on the page. A
+  20-second soak of 388 random edits while playing: no errors, memory flat.
+
+---
+
 ## Phase 12 — Sections (from the backlog)
 
 Variations across cycles: same polyrhythmic base, different active beats,

@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 59 checks, should all pass
+npm test                      # 72 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -61,10 +61,15 @@ so the groove never stops.
 - **Tap a beat** in the drawing to switch it off, or back on. It is then
   silent in every cycle (`active`).
 - **Tap the strip along the top** of the drawing to jump there.
-- **Under the drawing**, one card per layer: sample, beats, semitones or
-  scale degrees, scale, root, gain, **M**ute, **S**olo, and ✕ to remove it.
-  Above the cards: cycle length, loops, the piece's scale and root, and
-  **+ Add layer**.
+- **Under the drawing**, one card per layer: **M**ute, **S**olo, sample,
+  beats, semitones or scale degrees, scale, root, gain, ⧉ to duplicate the
+  layer and ✕ to remove it. An **On** row has a button per beat -- the same
+  as tapping beats in the drawing, but easy to hit on a phone.
+- **The Piece panel** above the cards: the piece's name (used for saved
+  files), undo and redo, cycle length, loops, scale, root and
+  **+ Add layer**. It also says how many cycles the whole pattern takes to
+  come round, and offers to set the loops to a whole number of repeats, so
+  the WAV loops on the pattern rather than restarting it part-way.
 - **The step strip** shows the layer's sequence, one tile per step. Tap a
   tile to choose it -- every place that step lands lights up in the drawing,
   which is the clearest way to see a sequence phase against its beats --
@@ -260,6 +265,11 @@ follow. See `PHASES.md`.
   JavaScript engine must match them exactly: same verdict, same grid,
   byte-identical WAV.
 - **edit** — every change the editor can make, checked without a browser.
+- **fuzz** — thousands of random edits from a fixed seed; nothing may crash,
+  and rules that must always hold (one cell per beat, solo beats mute,
+  save-and-reload is exact, undo returns exactly) are checked after each.
+- **architecture** — the engine modules never import the page's modules or
+  touch the browser, so the boundary cannot wear away.
 - **page** — builds the page and opens it in headless Chromium: it must load
   without error, draw every note, and render the same audio fingerprint as
   Node.

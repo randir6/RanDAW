@@ -327,3 +327,17 @@ Design notes from thinking it through, so the work does not start cold:
 - **Test the page by driving Chrome, not by dumping it.** `--dump-dom` runs on
   a simulated clock that races ahead of real work; `test/browser.js` talks to
   Chrome over its debugging protocol and waits for real conditions.
+- **An edit redraws first and makes its sound 25 ms later**, so the screen
+  answers a tap at once even where rendering is slow; a quick run of edits
+  makes the sound only for the last. Download finishes a waiting sound
+  first. `data-busy` marks a waiting sound for the checks.
+- **Finished sounds are cached between edits**, keyed by sample, rate,
+  pitch and gain -- everything that decides them -- and the cache is
+  emptied past 300 entries rather than allowed to grow. If a sample could
+  ever be replaced under the same name (custom samples), the cache must be
+  cleared then.
+- **Two greys:** `--muted` for lines and hatching in the drawing (3:1 is the
+  bar for graphics), `--ink-3` for quiet text (4.5:1 for small text). Keep
+  them apart.
+- **Loop suggestions round up** to the next whole number of repeats, so
+  following one never shortens a piece unexpectedly.

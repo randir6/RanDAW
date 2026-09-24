@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from polyrhythm.export import write_export
 from polyrhythm.layer_arg import parse_layer_arg
 from polyrhythm.piece import DEFAULT_CYCLE_DURATION, build_piece
 from polyrhythm.render import render_audio
@@ -103,6 +104,12 @@ def build_parser():
         f"Default: {DEFAULT_MAX_DURATION:.0f}",
     )
     parser.add_argument("--sample-rate", type=int)
+    parser.add_argument(
+        "--export-json",
+        metavar="FILE",
+        help="Also write the piece as JSON: the spec (which --config reads back "
+        "in) plus its timing and a grid of every beat, silent ones included.",
+    )
     parser.add_argument(
         "--dump-schedule",
         # "store_true" makes this a flag: present means True, absent False.
@@ -192,7 +199,14 @@ def main():
     elif "out" in spec:
         out_path = str(base_dir / spec["out"])
     else:
-        parser.error("need --out, on the command line or in the config")
+        out_path = None
+
+    # Something has to be produced. Audio only when something needs it -- a
+    # JSON export on its own never has to render a note.
+    if out_path is None and args.export_json is None:
+        parser.error(
+            "need --out (or --export-json), on the command line or in the config"
+        )
 
     # The length limit is policy, so it lives here in the front end rather
     # than in build_piece: a GUI might sensibly choose differently.
@@ -204,6 +218,18 @@ def main():
             f"{max_duration:.0f}s limit. Render a shorter file with fewer --loops "
             f"or a shorter --cycle-duration, or raise --max-duration."
         )
+
+    if args.export_json:
+        data = write_export(piece, args.export_json)
+        derived = data["derived"]
+        sounding = sum(1 for c in derived["cells"] if c["status"] == "note")
+        print(
+            f"wrote {args.export_json}: {len(derived['cells'])} beats, "
+            f"{sounding} sounding, {len(derived['coincidences'])} coincidences"
+        )
+
+    if out_path is None:
+        return
 
     # Decide what happens when. Cheap -- well under a millisecond.
     events = schedule(piece.layers, piece.loops)

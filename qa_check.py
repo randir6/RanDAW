@@ -29,7 +29,8 @@ from polyrhythm.layer import Layer, make_layer
 from polyrhythm.layer_arg import parse_layer_arg
 from polyrhythm.piece import build_piece
 from polyrhythm.scales import SCALES, degree_to_semitones
-from polyrhythm.schedule import schedule
+from polyrhythm.export import piece_to_dict
+from polyrhythm.schedule import STATUS_INACTIVE, STATUS_NOTE, STATUS_REST, grid, schedule
 from polyrhythm.spec import SpecError, read_spec
 
 SR = 44100
@@ -649,6 +650,94 @@ rounded = build_piece({"cycle_duration": 2.0, "loops": 1, "layer": [
     {"beats": b, "notes": [0], "sample": str(impulse)} for b in (3, 4, 5, 7, 11, 13)]})
 check("warnings come back as data rather than being printed",
       any("rounded" in w for w in rounded.warnings), f"{len(rounded.warnings)} warning(s)")
+
+# --- The grid ---------------------------------------------------------------
+# The schedule only lists what sounds. The grid lists every beat of every
+# layer in every cycle, silent ones included, because a picture of the piece
+# needs the silences as much as the notes -- and where each falls relative to
+# the other layers.
+g_layers = [
+    Layer(beats=3, notes=[0, None, 7, 5, 3], sample_path="a.wav"),          # rests travel
+    Layer(beats=4, notes=[2], sample_path="b.wav", active_beats={0, 2}),   # beats 2, 4 off
+]
+cells = grid(g_layers, loops=2)
+check("the grid has exactly one cell per layer x cycle x beat",
+      len(cells) == 2 * (3 + 4)
+      and len({(c.layer, c.cycle, c.beat) for c in cells}) == len(cells),
+      f"{len(cells)} cells")
+
+check("the schedule is exactly the grid's sounding cells",
+      [(e.layer, e.beat, e.pulse, e.semitones) for e in schedule(g_layers, 2)]
+      == [(c.layer, c.beat, c.pulse, c.semitones) for c in cells if c.status == STATUS_NOTE])
+
+# The rest is sequence position 1 of 5, read every 5th beat: occurrences 1, 6
+# and 11, which over a 3-beat layer are beat 1 of cycle 0, beat 0 of cycle 2
+# and beat 2 of cycle 3. Four cycles are needed to see it move twice.
+rest_beats = [(c.cycle, c.beat) for c in grid(g_layers, loops=4)
+              if c.layer == 0 and c.status == STATUS_REST]
+check("a rest in the grid moves with the sequence",
+      rest_beats == [(0, 1), (2, 0), (3, 2)], f"rests at (cycle, beat) {rest_beats}")
+off_beats = [(c.cycle, c.beat) for c in cells if c.layer == 1 and c.status == STATUS_INACTIVE]
+check("an inactive beat sits in the same place every cycle",
+      off_beats == [(0, 1), (0, 3), (1, 1), (1, 3)], f"inactive at {off_beats}")
+
+check("each event knows which of its layer's beats it is",
+      [e.beat for e in schedule(g_layers, 1) if e.layer == 0] == [0, 2])
+
+# The JSON export, which a display draws from without repeating any logic.
+exp_piece = build_piece({
+    "cycle_duration": 2.0, "loops": 2, "scale": "major",
+    "layer": [
+        {"beats": 3, "degrees": [1, 3, 5], "sample": str(impulse)},
+        {"beats": 4, "notes": [0, "-", 0, 0], "sample": str(impulse)},
+        {"beats": 4, "notes": [0, 7], "sample": str(impulse), "active": [1, 3]},
+    ],
+})
+exported = piece_to_dict(exp_piece)
+d_cells, d_layers = exported["derived"]["cells"], exported["derived"]["layers"]
+
+check("cells are labelled in the user's own notation",
+      [c["label"] for c in d_cells if c["layer"] == 0 and c["cycle"] == 1] == ["1", "3", "5"]
+      and {c["label"] for c in d_cells if c["layer"] == 1} == {"x", "-"}
+      and {c["label"] for c in d_cells if c["layer"] == 2} == {"0", "7"},
+      "degrees as degrees, a drum as x, a rest as -")
+
+check("counts a musician says aloud start at 1 in the export",
+      d_cells[0]["cycle"] == 1 and d_cells[0]["beat"] == 1
+      and max(c["cycle"] for c in d_cells) == 2)
+
+heights = [c["height"] for c in d_cells if c["layer"] == 0 and c["cycle"] == 1]
+check("pitch height spans each layer's own range",
+      heights == [0.0, 0.571429, 1.0] and all(c["height"] == 0.5 for c in d_cells if c["layer"] == 1),
+      f"major 1,3,5 -> {heights}; drums flat at 0.5")
+
+check("an inactive beat keeps its would-be pitch but is marked inactive",
+      [c["status"] for c in d_cells if c["layer"] == 2 and c["cycle"] == 1]
+      == ["note", "inactive", "note", "inactive"])
+
+# 3 against 4 against 4: the only instants where 2+ layers sound together.
+co = [(c["cycle"], c["offset"], c["layers"]) for c in exported["derived"]["coincidences"]]
+check("coincidences are exactly the instants where two or more layers sound",
+      co == [(1, 0.0, [0, 1, 2]), (1, 0.5, [1, 2]), (2, 0.0, [0, 1, 2]), (2, 0.5, [1, 2])],
+      f"{len(co)} coincidences")
+
+check("beats that sound together share an offset, so they line up when drawn",
+      all(len({c["offset"] for c in d_cells if c["pulse"] == k["pulse"]}) == 1
+          for k in exported["derived"]["coincidences"]))
+
+# Round trip through the command line: export, read the JSON back as a config
+# from a DIFFERENT folder, and the audio must be identical.
+json_dir = tmp / "elsewhere"
+json_dir.mkdir()
+run("--config", str(same_config), "--export-json", str(json_dir / "p.json"))
+check("--export-json alone writes no audio",
+      (json_dir / "p.json").is_file() and not list(json_dir.glob("*.wav")))
+r = run("--config", str(json_dir / "p.json"), "--out", str(tmp / "from_json.wav"))
+check("an exported piece renders byte-identically when read back in",
+      r.returncode == 0
+      and np.array_equal(sf.read(tmp / "from_json.wav", dtype="float32")[0],
+                         sf.read(tmp / "cfg.wav", dtype="float32")[0]),
+      "sample paths rewritten so the JSON works from its own folder")
 
 print()
 if failures:

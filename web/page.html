@@ -35,7 +35,11 @@
     --row: #f3f2ee;
     --ink: #0b0b0b;
     --ink-2: #52514e;
-    --muted: #898781;
+    --muted: #898781;   /* lines and hatching in the drawing */
+    /* Quiet TEXT. Darker than --muted, because small text needs a contrast
+       of at least 4.5 to 1 with its background to be comfortably readable
+       (the WCAG AA standard), and --muted only reaches about 3.4. */
+    --ink-3: #6e6d68;
     --grid: #e1e0d9;
     --bar: #c3c2b7;
     --warn: #8a5a00;
@@ -56,6 +60,7 @@
       --ink: #ffffff;
       --ink-2: #c3c2b7;
       --muted: #898781;
+      --ink-3: #8b8a85;
       --grid: #2c2c2a;
       --bar: #4a4a46;
       --warn: #e0a84a;
@@ -103,7 +108,7 @@
   .group.save { margin-left: auto; }
   .clock { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 120px; }
   .window { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-  .hint { color: var(--muted); font-size: 13px; }
+  .hint { color: var(--ink-3); font-size: 13px; }
   .message { margin: 0 0 10px; min-height: 1.45em; }
   .message.warn { color: var(--warn); }
   .message.error { color: var(--error); font-weight: 600; }
@@ -119,7 +124,7 @@
   .l3 { --c: var(--s4); } .l4 { --c: var(--s5); }
 
   .row-bg { fill: var(--row); }
-  .cycle-label { fill: var(--muted); font-size: 13px; }
+  .cycle-label { fill: var(--ink-3); font-size: 13px; }
   .bar-line { stroke: var(--bar); stroke-width: 1.5; }
   .name { fill: var(--ink); font-size: 16px; font-weight: 650; }
   .sub { fill: var(--ink-2); font-size: 12.5px; }
@@ -165,7 +170,7 @@
   /* A layer that cannot be heard (muted, or another layer is soloed) is
      still drawn, faded, and its name says why. */
   .silent .band, .silent .mark, .silent .rest-glyph { opacity: .3; }
-  .state { fill: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .state { fill: var(--ink-3); font-size: 12.5px; font-weight: 500; }
   /* Every place the selected sequence step lands. */
   .band.picked { stroke: var(--ink-2); stroke-width: 1.5; stroke-dasharray: none; }
   .mark.picked circle { stroke: var(--ink); stroke-width: 3; }
@@ -214,7 +219,7 @@
     min-width: 40px; padding: 6px 8px; font-weight: 650; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--c) 18%, var(--surface));
   }
-  .tile.rest { background: var(--surface); color: var(--muted); border-style: dashed; }
+  .tile.rest { background: var(--surface); color: var(--ink-3); border-style: dashed; }
   /* Browsers too old for color-mix() (above) keep this plainer tint. */
   @supports not (background: color-mix(in srgb, red 50%, blue)) {
     .tile { background: var(--row); }
@@ -249,7 +254,7 @@
   details { margin-top: 14px; }
   summary { cursor: pointer; color: var(--ink-2); }
   pre { font-size: 13px; line-height: 1.6; overflow-x: auto; background: var(--surface); padding: 12px; border-radius: 10px; }
-  .small { color: var(--muted); font-size: 13px; }
+  .small { color: var(--ink-3); font-size: 13px; }
   /* Last, so nothing above overrides it: iPhones zoom the whole page into any
      text box or menu whose text is smaller than 16px when it is tapped. At
      16px they leave it alone. */

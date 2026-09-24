@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 75 checks, should all pass
+npm test                      # 77 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,

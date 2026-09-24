@@ -520,19 +520,27 @@ Work done without new decisions, each change its own commit:
   after: from tap to screen went from 45 ms to 6 ms for tresillo, and from
   about 250 ms to 20 ms for a dense two-minute piece.
 - **Phone and iPad.** No zoom when tapping a text box or quick taps; older
-  Safari supported; "reduce motion" honoured.
+  Safari supported; "reduce motion" honoured. The drawing is laid out for
+  the width it has (900-1600 units), so on an iPad held upright its labels
+  are about twice the size they were; it redraws when the device turns.
 - **Found by reading the code:** the fingerprint was rehashed on every
   redraw; two animation loops could run at once; a refused change left its
-  control showing the value that did not happen.
+  control showing the value that did not happen; a refusal made straight
+  after an edit could be wiped by that edit's sound arriving; and keyboard
+  focus was thrown back to the top of the page after every press.
 - **New:** an On row of beat buttons per card; duplicate layer; a name for
   the piece; how many cycles each pattern takes to come round, with a button
-  to make the loops a whole number of repeats.
+  to make the loops a whole number of repeats; a one-tap fix when the mix
+  clips; Escape puts the step keypad away.
 - **Design:** Play stands out, saving is grouped at the right, the piece's
   settings have their own panel; quiet text now meets the WCAG contrast
   standard in both themes.
-- **Checks:** 72, adding thousands of random edits against rules that must
+- **Checks:** 77, adding thousands of random edits against rules that must
   always hold, and a check that the engine never depends on the page. A
   20-second soak of 388 random edits while playing: no errors, memory flat.
+  The whole suite passes repeatedly under heavy CPU load.
+- **Tidying:** draft storage and file saving moved out of `main.js` into
+  `draft.js` and `files.js`.
 
 ---
 

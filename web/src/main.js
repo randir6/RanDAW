@@ -293,7 +293,8 @@ function show() {
     samples: sampleNames,
     selected: state.selected,
     history: { canUndo: state.history.length > 0, canRedo: state.future.length > 0 },
-    actions: { edit, select, undo, redo },
+    name: state.name,
+    actions: { edit, select, undo, redo, rename },
   });
 
   showFingerprint();
@@ -305,6 +306,15 @@ function showFingerprint() {
   if (state.made.print === null) return;
   $("fingerprint").textContent = state.made.print;
   document.documentElement.dataset.audioFingerprint = state.made.print;
+}
+
+// Give the piece a new name: the title, and the name of anything saved.
+// Characters that file systems refuse are left out; an empty name is ignored.
+function rename(text) {
+  const name = text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
+  if (name) state.name = name;
+  saveDraft();
+  show();
 }
 
 // Choose a sequence step to edit (step null clears the choice).

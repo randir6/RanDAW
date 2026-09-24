@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, setBeats, setSequence, setSetting, setStep, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setBeats, setSequence, setSetting, setStep, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { planSwap } from "../src/player.js";
@@ -165,6 +165,22 @@ test("editing: piece settings, beats and adding a layer", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.card').length"), spec.layer.length - 1);
   }));
 
+test("editing: duplicate a layer, and rename the piece for saving", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await click(page, ".card .duplicate", 3);  // the pluck
+    assert.equal(await fingerprint(page), print(duplicateLayer(example("tresillo"), 3)));
+    await page.evaluate(`{
+      const name = document.querySelector("input.name");
+      name.value = "  my/groove?  ";
+      name.dispatchEvent(new Event("change"));
+      window.saved = [];
+      HTMLAnchorElement.prototype.click = function () { window.saved.push(this.download); };
+      document.getElementById("save-piece").click();
+      true }`);
+    assert.deepEqual(await page.evaluate("window.saved"), ["mygroove.json"]);
+    assert.equal(await page.evaluate("document.title"), "mygroove · RanDAW");
+  }));
+
 test("editing: the strip along the top jumps playback", { skip }, () =>
   editing("tresillo", async (page) => {
     await page.evaluate(`{
@@ -231,6 +247,13 @@ test("editing: the piece says how long its pattern takes, and can loop on it exa
     await page.evaluate(`[...document.querySelectorAll(".piece-controls button")].find((b) => b.textContent === "Use 21 loops").click(), true`);
     assert.equal(await fingerprint(page), print(setSetting(example("rests"), "loops", 21)));
     assert.equal(await page.evaluate("document.querySelector('.piece-controls .repeat').className"), "repeat");
+  }));
+
+test("editing: the loop suggestion rounds up to whole repeats, keeping the length chosen", { skip }, () =>
+  editing("tresillo", async (page) => {
+    // tresillo: 8 loops of a 3-cycle pattern. The next whole number is 9.
+    const button = "[...document.querySelectorAll('.piece-controls .repeat button')].map((b) => b.textContent)";
+    assert.deepEqual(await page.evaluate(button), ["Use 9 loops"]);
   }));
 
 test("editing: a refused change leaves the controls showing the real piece", { skip }, () =>

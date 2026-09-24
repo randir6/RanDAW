@@ -10,7 +10,7 @@
 // result is valid, records it for undo, and plays it.
 
 import {
-  addLayer, effectiveScale, formatSequence, insertStep, MAX_BEATS, MAX_LOOPS, parseSequence,
+  addLayer, duplicateLayer, effectiveScale, formatSequence, insertStep, MAX_BEATS, MAX_LOOPS, parseSequence,
   removeLayer, removeStep, sequenceKey, setBeats, setLayer, setSequence, setSetting, setStep,
   switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
@@ -66,8 +66,9 @@ const pretty = (name) => name.replaceAll("_", " ");
 //   samples     the names in the sample library
 //   selected    the selected sequence step, { layer, step }, or null
 //   history     { canUndo, canRedo }
-//   actions     { edit(fn), select(layer, step), undo(), redo() }
-export function renderEditor({ container, spec, derived, samples, selected, history, actions }) {
+//   name        what the piece is called (used for saved files)
+//   actions     { edit(fn), select(layer, step), undo(), redo(), rename(name) }
+export function renderEditor({ container, spec, derived, samples, selected, history, name, actions }) {
   const { edit, select } = actions;
   const pieceScale = spec.scale ?? null;
   // A piece-wide scale can only be removed if no degree layer relies on it.
@@ -76,6 +77,12 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
   const cycle = derived.cycle_duration;
   const pieceRow = h("div", { class: "bar piece-controls" },
     h("span", { class: "panel-title" }, "Piece"),
+    h("input", {
+      type: "text", class: "name", value: name, spellcheck: "false", maxlength: "60",
+      "aria-label": "Name of the piece, used for saved files",
+      onchange: (e) => actions.rename(e.target.value),
+      onkeydown: (e) => { if (e.key === "Enter") e.target.blur(); },
+    }),
     h("button", { type: "button", disabled: !history.canUndo, onclick: actions.undo, title: "Undo (Ctrl+Z / ⌘Z)" }, "↶ Undo"),
     h("button", { type: "button", disabled: !history.canRedo, onclick: actions.redo, title: "Redo" }, "↷ Redo"),
     h("label", { class: "field" },
@@ -114,13 +121,18 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     const whole = derived.repeat_cycles;
     if (whole === 1) return null;
     const clean = spec.loops % whole === 0;
-    const fits = whole <= MAX_LOOPS && whole * cycle <= 120;
+    // The nearest whole number of repeats: rounding the loops up keeps at
+    // least the length chosen; down only if up would not fit the limits.
+    const fits = (n) => n >= whole && n <= MAX_LOOPS && n * cycle <= 120;
+    const up = Math.ceil(spec.loops / whole) * whole;
+    const down = Math.floor(spec.loops / whole) * whole;
+    const suggestion = fits(up) ? up : fits(down) ? down : null;
     return h("span", { class: `repeat${clean ? "" : " uneven"}` },
       `whole pattern: ${whole} cycles`,
-      !clean && fits && h("button", {
+      !clean && suggestion !== null && h("button", {
         type: "button", title: "So the file loops on a whole number of repeats",
-        onclick: () => edit((s) => setSetting(s, "loops", whole)),
-      }, `Use ${whole} loops`));
+        onclick: () => edit((s) => setSetting(s, "loops", suggestion)),
+      }, `Use ${suggestion} loops`));
   }
 
   const cards = spec.layer.map((layer, i) => layerCard(layer, i));
@@ -170,6 +182,12 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
           },
         }),
         h("span", { class: "value" }, (layer.gain ?? 1).toFixed(2))),
+      h("button", {
+        type: "button", class: "duplicate", disabled: spec.layer.length >= MAX_LAYERS,
+        title: spec.layer.length >= MAX_LAYERS ? `The drawing shows at most ${MAX_LAYERS} layers` : "Duplicate this layer",
+        "aria-label": `Duplicate layer ${i + 1}`,
+        onclick: () => edit((s) => duplicateLayer(s, i)),
+      }, "⧉"),
       h("button", {
         type: "button", class: "remove", disabled: spec.layer.length === 1,
         title: "Remove this layer", "aria-label": `Remove layer ${i + 1}`,

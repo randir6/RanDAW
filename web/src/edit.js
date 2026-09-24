@@ -70,6 +70,14 @@ export function addLayer(spec, sampleNames) {
   return next;
 }
 
+// A copy of a layer, placed straight after it: the quickest way to try a
+// variation on something that already works.
+export function duplicateLayer(spec, index) {
+  const next = copy(spec);
+  next.layer.splice(index + 1, 0, copy(next.layer[index]));
+  return next;
+}
+
 export function removeLayer(spec, index) {
   const next = copy(spec);
   next.layer.splice(index, 1);  // splice(at, 1) removes one item at `at`

@@ -91,8 +91,15 @@ export function buildPiece(spec, { samples, source = "piece" }) {
     throw new SpecError(`unknown sample ${missing.join(", ")}. This page has: ${available}`);
   }
 
+  // Which layers sound. If any layer is soloed, exactly the soloed ones;
+  // otherwise every layer that is not muted. Solo wins over mute, as on a
+  // mixing desk: soloing a muted layer lets you hear it on its own.
+  const anySolo = layers.some((layer) => layer.solo);
+  const audible = layers.map((layer) => (anySolo ? layer.solo : !layer.mute));
+
   return Object.freeze({
     layers: Object.freeze(layers),
+    audible: Object.freeze(audible),
     loops,
     samplesPerPulse,
     sampleRate,

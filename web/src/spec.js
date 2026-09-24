@@ -42,7 +42,9 @@ export const EXPORT_VERSION = 1;
 export const TOP_LEVEL_KEYS = [
   "cycle_duration", "pulse_duration", "loops", "sample_rate", "scale", "root", "layer",
 ];
-export const LAYER_KEYS = ["beats", "notes", "degrees", "sample", "gain", "active", "scale", "root"];
+export const LAYER_KEYS = [
+  "beats", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo",
+];
 
 // Settings a spec may carry, and the kind of number each must be.
 const SETTING_KINDS = {
@@ -240,9 +242,20 @@ export function layerFromSpec(entry, { defaultScale = null, defaultRoot = 0, whe
   const gain = has(entry, "gain") ? entry.gain : 1.0;
   if (!isNumber(gain)) throw new SpecError(`${where}: gain must be a number, got ${shown(gain)}`);
 
+  // Mute and solo are switches: true or false, and false when left out.
+  const [mute, solo] = ["mute", "solo"].map((key) => {
+    const value = has(entry, key) ? entry[key] : false;
+    if (typeof value !== "boolean") {
+      throw new SpecError(`${where}: ${key} must be true or false, got ${shown(value)}`);
+    }
+    return value;
+  });
+
   try {
     // The same rules everywhere -- one place, no drift.
-    return makeLayer({ beats: entry.beats, sample: entry.sample, notes, degrees, scale, root, gain, active });
+    return makeLayer({
+      beats: entry.beats, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo,
+    });
   } catch (e) {
     // Only rule-breaking gets a friendly message. Anything else is a real
     // bug, and re-throwing it unchanged keeps it loud.

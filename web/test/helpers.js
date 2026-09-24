@@ -51,6 +51,6 @@ export const fingerprint = (value) => sha256(canonical(value));
 // Spec in, WAV bytes out: what the page does when you press Download.
 export function renderWav(spec) {
   const piece = buildPiece(spec, { samples: LIBRARY.keys() });
-  const mix = renderAudio(schedule(piece.layers, piece.loops), { ...piece, library: LIBRARY });
+  const mix = renderAudio(schedule(piece.layers, piece.loops, { audible: piece.audible }), { ...piece, library: LIBRARY });
   return { piece, wav: encodeWav16(finishMix(mix).mix, piece.sampleRate) };
 }

@@ -78,6 +78,11 @@ export function pieceToDerived(piece) {
       // melody sitting next to a wide one.
       pitch_low: Math.min(...pitches),
       pitch_high: Math.max(...pitches),
+      mute: layer.mute,
+      solo: layer.solo,
+      // Whether it sounds, once every layer's mute and solo are taken into
+      // account. A silent layer is still drawn, faded.
+      audible: piece.audible[index],
     };
   });
 
@@ -109,7 +114,8 @@ export function pieceToDerived(piece) {
       label: label(piece.layers[cell.layer], cell.step, info.percussive),
       height: roundTo(height, PLACES),
     });
-    if (cell.status === STATUS_NOTE) {
+    // Only layers you can hear count towards "sounding together".
+    if (cell.status === STATUS_NOTE && piece.audible[cell.layer]) {
       if (!notesAtPulse.has(cell.pulse)) notesAtPulse.set(cell.pulse, new Set());
       notesAtPulse.get(cell.pulse).add(cell.layer);
     }

@@ -47,6 +47,8 @@ export function makeLayer({
   root = 0,
   gain = 1.0,
   active = null,
+  mute = false,
+  solo = false,
 }) {
   if (beats < 1) throw new LayerError(`beat count must be >= 1, got ${beats}`);
 
@@ -114,5 +116,11 @@ export function makeLayer({
     pitchKind,
     scale,
     root,
+    // Mute silences this layer. Solo silences every layer that is NOT
+    // soloed. Neither changes what the layer is, so it stays drawn -- and
+    // which layers actually sound depends on all of them together, so that
+    // is worked out by buildPiece, not here.
+    mute,
+    solo,
   });
 }

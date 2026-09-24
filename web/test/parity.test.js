@@ -20,6 +20,13 @@ import { fingerprint, HERE, LIBRARY, readJson, renderWav, sha256, WEB } from "./
 
 const FIXTURES = `${HERE}/fixtures`;
 
+// Fields added to each layer after the Python version was retired. The
+// answer key cannot know about them, so they are set aside before comparing.
+const asRecorded = (derived) => ({
+  ...derived,
+  layers: derived.layers.map(({ mute, solo, audible, ...rest }) => rest),
+});
+
 test("the canonical fingerprint agrees with Python's", () => {
   const probe = readJson(FIXTURES, "canonical.json");
   assert.equal(fingerprint(probe.value), probe.fingerprint);
@@ -32,7 +39,7 @@ for (const [name, expected] of Object.entries(examples)) {
     const { piece, wav } = renderWav(spec);
     // deepStrictEqual compares every field of every cell, and on failure
     // prints exactly which ones differ.
-    assert.deepStrictEqual(pieceToDerived(piece), expected.derived);
+    assert.deepStrictEqual(asRecorded(pieceToDerived(piece)), expected.derived);
     assert.equal(sha256(wav), expected.wav);
   });
 }
@@ -53,7 +60,7 @@ test("600 random pieces: same verdict, same grid, same audio", () => {
       problems.push(`#${index}: JavaScript accepted a piece Python refused (${c.error})`);
       continue;
     }
-    if (fingerprint(pieceToDerived(result.piece)) !== c.derived) problems.push(`#${index}: grid differs`);
+    if (fingerprint(asRecorded(pieceToDerived(result.piece))) !== c.derived) problems.push(`#${index}: grid differs`);
     if (sha256(result.wav) !== c.wav) problems.push(`#${index}: audio differs`);
   }
   // Listing every problem, rather than stopping at the first, shows whether

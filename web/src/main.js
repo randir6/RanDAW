@@ -86,7 +86,7 @@ function open(spec, name) {
   }
 
   const derived = pieceToDerived(piece);
-  const { mix, peak } = finishMix(renderAudio(schedule(piece.layers, piece.loops), { ...piece, library }));
+  const { mix, peak } = finishMix(renderAudio(schedule(piece.layers, piece.loops, { audible: piece.audible }), { ...piece, library }));
   const wav = encodeWav16(mix, piece.sampleRate);
   current = { name, spec: piece.spec, wav };
   player.load(mix, piece.sampleRate);

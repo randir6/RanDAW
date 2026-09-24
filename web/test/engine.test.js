@@ -181,3 +181,51 @@ test("JavaScript's inherited names are not mistaken for real ones", () => {
   assert.throws(() => buildPiece({ loops: 1, layer: [{ beats: 1, notes: [0], sample: "toString" }] }, { samples: SAMPLES }),
     /unknown sample toString/);
 });
+
+// --- Mute and solo -------------------------------------------------------------------
+
+const band = (extra = {}) => ({
+  loops: 1,
+  layer: [
+    { beats: 3, notes: [0], sample: "kick.wav", ...extra.a },
+    { beats: 4, notes: [0], sample: "hat.wav", ...extra.b },
+    { beats: 2, notes: [0], sample: "tom.wav", ...extra.c },
+  ],
+});
+const sounding = (spec) => {
+  const p = piece(spec);
+  return [...new Set(schedule(p.layers, p.loops, { audible: p.audible }).map((e) => e.layer))];
+};
+
+test("a muted layer is silent but still drawn", () => {
+  const spec = band({ b: { mute: true } });
+  assert.deepEqual(sounding(spec), [0, 2]);
+  const d = pieceToDerived(piece(spec));
+  assert.equal(d.cells.filter((c) => c.layer === 1).length, 4, "the muted layer's beats are still in the grid");
+  assert.deepEqual(d.layers.map((l) => l.audible), [true, false, true]);
+});
+
+test("solo silences every layer that is not soloed, and wins over mute", () => {
+  assert.deepEqual(sounding(band({ c: { solo: true } })), [2]);
+  assert.deepEqual(sounding(band({ a: { solo: true }, c: { solo: true } })), [0, 2]);
+  assert.deepEqual(sounding(band({ a: { mute: true, solo: true } })), [0]);
+});
+
+test("only layers you can hear count as sounding together", () => {
+  // Kick (3) and hat (4) meet only on the downbeat; the tom (2) meets the hat
+  // on beat 3 as well. Muting the hat leaves kick and tom on the downbeat.
+  const layersAt = (spec) => pieceToDerived(piece(spec)).coincidences.map((k) => k.layers);
+  assert.deepEqual(layersAt(band()), [[0, 1, 2], [1, 2]]);
+  assert.deepEqual(layersAt(band({ b: { mute: true } })), [[0, 2]]);
+});
+
+test("a muted layer is left out of the downloaded audio", () => {
+  const alone = renderWav({ loops: 1, layer: [{ beats: 3, notes: [0], sample: "kick.wav" }] }).wav;
+  const muted = renderWav(band({ b: { mute: true }, c: { mute: true } })).wav;
+  assert.deepEqual(muted, alone);
+});
+
+test("mute and solo must be true or false", () => {
+  refused(band({ a: { mute: "yes" } }), "mute must be true or false");
+  refused(band({ a: { solo: 1 } }), "solo must be true or false");
+});

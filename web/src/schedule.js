@@ -126,10 +126,15 @@ export function grid(layers, loops) {
 
 // Every note in the piece, in time order. What the renderer plays. Built from
 // the same walk as the grid, keeping only the beats that sound.
-export function schedule(layers, loops) {
+//
+// `audible`, if given, is a true/false per layer (piece.audible): layers that
+// are muted, or silenced by another layer's solo, are left out. The grid
+// keeps them, so they can still be drawn.
+export function schedule(layers, loops, { audible = null } = {}) {
   const events = [];
   for (const cell of walk(layers, loops)) {
     if (cell.status !== STATUS_NOTE) continue;
+    if (audible !== null && !audible[cell.layer]) continue;
     const layer = layers[cell.layer];
     events.push({
       layer: cell.layer,

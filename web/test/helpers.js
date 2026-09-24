@@ -28,8 +28,9 @@ export const readJson = (...parts) => JSON.parse(readFileSync(join(...parts), "u
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-// The same encoding as canonical() in make_fixtures.py: numbers as the hex of
-// their 64-bit form, text as the hex of its UTF-8 bytes.
+// The same encoding as canonical() in the (retired) make_fixtures.py, which
+// recorded the fixtures: numbers as the hex of their 64-bit form, text as the
+// hex of its UTF-8 bytes.
 export function canonical(value) {
   if (value === null) return "n";
   if (value === true) return "t";

@@ -1,6 +1,9 @@
 // Does the JavaScript engine give exactly the Python engine's answers?
 //
-// The answers were recorded by make_fixtures.py, running the Python version.
+// The answers were recorded by make_fixtures.py, running the Python version,
+// before both were retired in phase 11. They are still in git history, at
+// commit 3fffdeb: `git show 3fffdeb:web/test/make_fixtures.py`. The recorded
+// answers in fixtures/ stay, as a fixed record of what the engine does.
 // "Exactly" means the same grid, number for number, and a byte-identical WAV
 // file -- not "close enough". Anything looser would let small differences
 // pile up unnoticed.

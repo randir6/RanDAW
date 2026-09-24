@@ -1,5 +1,9 @@
 # Phase Plan
 
+*Phases 1–9 describe the Python version, which was retired in phase 11. File
+names in those sections refer to it; its code is in git history up to commit
+`3fffdeb`.*
+
 Sequencing for the capability arc in VISION.md. Each phase aims to be small
 enough to finish, and to end with something you can listen to or inspect.
 Phases after the next one or two are sketches — expect them to move.

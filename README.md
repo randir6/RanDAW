@@ -155,9 +155,7 @@ web/
   examples/          the six example pieces
   test/              the checks — run with `npm test`
 samples/             six synthetic one-shots, built into the page
-
-generate.py, polyrhythm/, qa_check.py, configs/
-                     the Python version, FROZEN — see below
+make_samples.py      how those were made (Python; the only Python left)
 ```
 
 **The one rule worth protecting:** the engine modules (spec, layer, scales,
@@ -180,18 +178,15 @@ ways JavaScript and Python disagree about arithmetic.
 
 ### The Python version
 
-Phases 1–9 were built in Python, and phase 10 moved the engine into the
-page. The Python version stays, frozen, until the page has been tried on
-real devices, then it is retired (git keeps it). It still works:
+Phases 1–9 were built in Python; phase 10 moved the engine into the page,
+and phase 11 retired the Python version once the page had been tried on a
+phone. It is all in git history up to commit `3fffdeb` (`git checkout 3fffdeb`
+to see it). What it did is pinned down by the recorded answers in
+`web/test/fixtures/`, which the JavaScript still has to match.
 
-```bash
-pip install -r requirements.txt        # numpy + soundfile, Python 3.11+
-python3 generate.py --config configs/tresillo.toml --out tresillo.wav
-python3 qa_check.py                    # 116 checks
-```
-
-Do not extend it — two engines is exactly the problem the move was meant to
-avoid.
+`make_samples.py` is the one Python file left: the record of how the six
+built-in sounds were made (`pip install -r requirements.txt`, then
+`python3 make_samples.py`). Nothing else needs Python.
 
 ## Which document is which
 

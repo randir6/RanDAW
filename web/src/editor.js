@@ -33,6 +33,34 @@ function h(tag, attrs = {}, ...children) {
   return node;
 }
 
+// The positions, child by child, that lead from `root` down to `node` -- or
+// null if `node` is not inside `root`.
+function pathTo(root, node) {
+  const path = [];
+  while (node && node !== root) {
+    const parent = node.parentElement;
+    if (!parent) return null;
+    path.unshift([...parent.children].indexOf(node));
+    node = parent;
+  }
+  return node === root ? path : null;
+}
+
+// Focus the element at a path, or the nearest thing above it if the layout
+// changed underneath. Only elements that can take focus are tried.
+function focusAt(root, path) {
+  let node = root;
+  const trail = [];
+  for (const index of path) {
+    const next = node.children[index];
+    if (!next) break;
+    node = next;
+    trail.push(node);
+  }
+  const target = trail.reverse().find((n) => n.matches("button:not(:disabled), input, select"));
+  target?.focus({ preventScroll: true });
+}
+
 // A number with − and + buttons either side.
 function stepper(label, value, onChange, { min = -Infinity, max = Infinity } = {}) {
   return h("span", { class: "stepper" },
@@ -137,7 +165,13 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
   }
 
   const cards = spec.layer.map((layer, i) => layerCard(layer, i));
+  // Rebuilding replaces every control, including the one that has keyboard
+  // focus -- which would send someone using a keyboard back to the top of the
+  // page after every press. So note where the focused control sits (its path
+  // of positions down from the panel), and focus whatever sits there after.
+  const path = pathTo(container, document.activeElement);
   container.replaceChildren(pieceRow, ...cards);
+  if (path !== null) focusAt(container, path);
 
   function layerCard(layer, i) {
     const info = derived.layers[i];
@@ -151,11 +185,13 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       h("span", { class: "switches" },
         h("button", {
           type: "button", class: "toggle", "aria-pressed": String(Boolean(layer.mute)),
-          title: "Mute: silence this layer", onclick: () => edit((s) => toggleMute(s, i)),
+          title: "Mute: silence this layer", "aria-label": `Mute layer ${i + 1}`,
+          onclick: () => edit((s) => toggleMute(s, i)),
         }, "M"),
         h("button", {
           type: "button", class: "toggle", "aria-pressed": String(Boolean(layer.solo)),
-          title: "Solo: hear only soloed layers", onclick: () => edit((s) => toggleSolo(s, i)),
+          title: "Solo: hear only soloed layers", "aria-label": `Solo layer ${i + 1}`,
+          onclick: () => edit((s) => toggleSolo(s, i)),
         }, "S")),
       menu("Sample", layer.sample, samples.map((n) => [n, n.replace(/\.wav$/i, "")]),
         (v) => edit((s) => setLayer(s, i, "sample", v))),

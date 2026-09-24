@@ -283,6 +283,23 @@ test("editing: Escape puts the step keypad away", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
   }));
 
+test("editing: keyboard focus stays on the control just used", { skip }, () =>
+  editing("tresillo", async (page) => {
+    // Focus the first card's "Beats up" and press it three times, as a
+    // keyboard would (Enter on a focused button clicks it).
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(`{
+        const button = document.activeElement?.matches("[aria-label='Beats up']")
+          ? document.activeElement
+          : document.querySelector(".card [aria-label='Beats up']");
+        button.focus();
+        button.click();
+        true }`);
+    }
+    assert.equal(await page.evaluate("document.activeElement.getAttribute('aria-label')"), "Beats up");
+    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').textContent"), "11");
+  }));
+
 test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>
   editing("rests", async (page) => {
     // Both in the same instant: a good edit (its sound is made 25 ms later),

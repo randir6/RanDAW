@@ -44,10 +44,14 @@ function stepper(label, value, onChange, { min = -Infinity, max = Infinity } = {
 }
 
 // A drop-down menu. `options` is a list of [value, label] pairs.
+//
+// If the change is refused (onChange returns false -- say, removing a scale
+// a layer still needs), the menu goes back to showing what the piece really
+// has, rather than the choice that did not happen.
 function menu(label, value, options, onChange) {
   return h("label", { class: "field" },
     h("span", { class: "label" }, label),
-    h("select", { onchange: (e) => onChange(e.target.value) },
+    h("select", { onchange: (e) => { if (onChange(e.target.value) === false) e.target.value = value; } },
       options.map(([v, text]) => h("option", { value: v, selected: v === value }, text))),
   );
 }
@@ -80,7 +84,11 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         "aria-label": "Cycle length in seconds",
         onchange: (e) => {
           const seconds = Number(e.target.value);
-          if (seconds > 0) edit((s) => setSetting(s, "cycle_duration", seconds));
+          // A refused change (not a positive number, or a piece too long)
+          // puts the box back to the real cycle length.
+          if (!(seconds > 0 && edit((s) => setSetting(s, "cycle_duration", seconds)))) {
+            e.target.value = cycle.toFixed(2);
+          }
         },
       }),
       h("span", { class: "unit" }, "s")),
@@ -135,7 +143,12 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
           // `input` fires while dragging: just update the number shown.
           // `change` fires on letting go: that is the edit, one undo step.
           oninput: (e) => { e.target.nextSibling.textContent = Number(e.target.value).toFixed(2); },
-          onchange: (e) => edit((s) => setLayer(s, i, "gain", Number(e.target.value))),
+          onchange: (e) => {
+            if (!edit((s) => setLayer(s, i, "gain", Number(e.target.value)))) {
+              e.target.value = String(layer.gain ?? 1);
+              e.target.nextSibling.textContent = (layer.gain ?? 1).toFixed(2);
+            }
+          },
         }),
         h("span", { class: "value" }, (layer.gain ?? 1).toFixed(2))),
       h("button", {

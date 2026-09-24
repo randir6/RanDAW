@@ -214,6 +214,27 @@ test("editing: jumping while playing carries on playing from the new place", { s
     assert.equal(await page.evaluate("document.getElementById('window').textContent"), "cycles 5–8 of 8");
   }));
 
+test("editing: a refused change leaves the controls showing the real piece", { skip }, () =>
+  editing("rests", async (page) => {
+    // Removing the piece's scale is refused: the rests layers need it.
+    await page.evaluate(`{
+      const scale = document.querySelector(".piece-controls select");
+      scale.value = "";
+      scale.dispatchEvent(new Event("change"));
+      true }`);
+    assert.match(await page.evaluate("document.getElementById('message').textContent"), /degrees need a scale/);
+    assert.equal(await page.evaluate("document.querySelector('.piece-controls select').value"), "dorian");
+
+    // A 30 s cycle over 6 loops would be 180 s, over the limit: refused.
+    await page.evaluate(`{
+      const cycle = document.querySelector(".piece-controls input[type=number]");
+      cycle.value = "30";
+      cycle.dispatchEvent(new Event("change"));
+      true }`);
+    assert.match(await page.evaluate("document.getElementById('message').textContent"), /over this page's limit/);
+    assert.equal(await page.evaluate("document.querySelector('.piece-controls input[type=number]').value"), "2.20");
+  }));
+
 // --- Where an edit comes in (no browser needed) ---------------------------------------
 
 test("an edit comes in at the next cycle, continuing the cycle count", () => {

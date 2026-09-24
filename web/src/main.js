@@ -93,9 +93,10 @@ const voices = new Map();
 const MAX_VOICES = 300;
 let view = null;  // the drawing, or null when the piece has too many layers
 
-// Work out everything about a spec and make its sound -- or say why not.
-// Returns null (having said why) if the piece cannot be used.
-function make(spec, name) {
+// Check a spec and work out everything the drawing needs -- or say why not.
+// Returns null (having said why) if the piece cannot be used. Quick: this is
+// what every edit waits for before the screen changes.
+function check(spec, name) {
   let piece;
   try {
     piece = buildPiece(spec, { samples: sampleNames, source: name });
@@ -109,27 +110,44 @@ function make(spec, name) {
       `${MAX_SECONDS} s. Use fewer loops or a shorter cycle.`, "error");
     return null;
   }
-  const derived = pieceToDerived(piece);
+  return { piece, derived: pieceToDerived(piece), mix: null, peak: 0, wav: null };
+}
+
+// Make a checked piece's sound, and its WAV file. The slow part of an edit.
+function sound(made) {
+  const { piece } = made;
   const events = schedule(piece.layers, piece.loops, { audible: piece.audible });
   if (voices.size > MAX_VOICES) voices.clear();
   const { mix, peak } = finishMix(renderAudio(events, { ...piece, library, cache: voices }));
-  const notes = [...piece.warnings];
-  if (peak > 1) {
-    notes.push(`the mix peaked at ${peak.toFixed(2)} and was clipped, which distorts -- ` +
-      `turn the layers down, e.g. multiply every gain by ${(0.99 / peak).toFixed(2)}`);
+  Object.assign(made, { mix, peak, wav: encodeWav16(mix, piece.sampleRate) });
+}
+
+// Everything worth telling the person about the piece as it stands: rounding,
+// clipping, and a piece too big to draw.
+function notices(made) {
+  const notes = [...made.piece.warnings];
+  if (made.peak > 1) {
+    notes.push(`the mix peaked at ${made.peak.toFixed(2)} and was clipped, which distorts -- ` +
+      `turn the layers down, e.g. multiply every gain by ${(0.99 / made.peak).toFixed(2)}`);
+  }
+  if (made.derived.layers.length > MAX_LAYERS) {
+    notes.push(`the drawing shows at most ${MAX_LAYERS} layers and this piece has ` +
+      `${made.derived.layers.length}; it still plays and downloads`);
   }
   say(notes.length ? `Note: ${notes.join("; ")}.` : "", notes.length ? "warn" : "");
-  return { piece, derived, mix, wav: encodeWav16(mix, piece.sampleRate) };
 }
 
 // Open a piece afresh: an example, a file, or the one saved in this page.
 // Undo history starts again, and playback goes back to the start.
 function open(spec, name) {
-  const made = make(spec, name);
+  const made = check(spec, name);
   if (made === null) return false;
+  cancelSound();
+  sound(made);
   Object.assign(state, { name, spec: made.piece.spec, history: [], future: [], selected: null, made });
   player.load(made.mix, made.piece.sampleRate, timing());
   show();
+  notices(made);
   return true;
 }
 
@@ -137,8 +155,11 @@ function open(spec, name) {
 // breaks a rule, the message says which and nothing changes -- the last good
 // version keeps playing. Otherwise it becomes the piece, Undo can take it
 // back, and while playing it comes in at the next cycle.
+//
+// The screen changes straight away; the sound is made a moment later (see
+// soundSoon), so a slow phone never makes a tap feel ignored.
 function commit(next, { record = true } = {}) {
-  const made = make(next, state.name);
+  const made = check(next, state.name);
   if (made === null) return false;
   if (record) {
     state.history.push(state.spec);
@@ -152,11 +173,46 @@ function commit(next, { record = true } = {}) {
   if (s && !(state.spec.layer[s.layer] && s.step < sequenceOf(state.spec.layer[s.layer]).length)) {
     state.selected = null;
   }
-  player.swap(made.mix, made.piece.sampleRate, timing());
   saveDraft();
   show();
+  soundSoon();
   return true;
 }
+
+// Making the sound is left until just after the screen has been redrawn, by
+// waiting a little over one screen refresh. Quick edits in a row -- tapping +
+// three times -- only make the sound once, for the last of them.
+// data-busy on the page says a sound is waiting, for the automated checks.
+let soundTimer = null;
+function soundSoon() {
+  clearTimeout(soundTimer);
+  document.documentElement.dataset.busy = "1";
+  soundTimer = setTimeout(soundNow, 25);
+}
+function soundNow() {
+  soundTimer = null;
+  const made = state.made;
+  if (made.mix === null) {
+    sound(made);
+    player.swap(made.mix, made.piece.sampleRate, timing());
+    notices(made);
+    showFingerprint();
+  }
+  delete document.documentElement.dataset.busy;
+}
+function cancelSound() {
+  clearTimeout(soundTimer);
+  soundTimer = null;
+  delete document.documentElement.dataset.busy;
+}
+// Anything that needs the finished sound -- Download WAV -- calls this first.
+function soundReady() {
+  if (soundTimer !== null) {
+    clearTimeout(soundTimer);
+    soundNow();
+  }
+}
+
 const sequenceOf = (layer) => layer.degrees ?? layer.notes;
 const edit = (change) => commit(change(state.spec));
 
@@ -204,11 +260,10 @@ function show() {
 
   if (derived.layers.length > MAX_LAYERS) {
     // Refuse to draw rather than draw only some: a layer you can hear but not
-    // see would make the rest of the picture untrustworthy. It still plays.
+    // see would make the rest of the picture untrustworthy. It still plays,
+    // and notices() says why the drawing is missing.
     view = null;
     $("figure").hidden = true;
-    say(`The drawing shows at most ${MAX_LAYERS} layers and this piece has ` +
-      `${derived.layers.length}. It still plays and downloads.`, "warn");
     $("text-grid").textContent = "";
   } else {
     $("figure").hidden = false;
@@ -233,10 +288,16 @@ function show() {
     actions: { edit, select, undo, redo },
   });
 
+  showFingerprint();
+  refresh();
+}
+
+// The audio fingerprint under "The grid as text", once the sound is made.
+function showFingerprint() {
+  if (state.made.wav === null) return;
   const print = fnv1a(state.made.wav);
   $("fingerprint").textContent = print;
   document.documentElement.dataset.audioFingerprint = print;
-  refresh();
 }
 
 // Choose a sequence step to edit (step null clears the choice).
@@ -397,6 +458,7 @@ $("open").addEventListener("change", async () => {
 });
 
 $("download").addEventListener("click", () => {
+  soundReady();
   download(state.made.wav, `${state.name}.wav`, "audio/wav");
 });
 $("save-piece").addEventListener("click", () => {

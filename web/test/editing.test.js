@@ -50,7 +50,12 @@ const click = (page, selector, n = 0) =>
 // A click that bubbles up like a real one, for SVG elements, which have no .click().
 const tap = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)})
   .dispatchEvent(new MouseEvent("click", { bubbles: true })), true`);
-const fingerprint = (page) => page.evaluate(FINGERPRINT);
+// The page redraws at once and makes the sound a moment later; wait for the
+// sound before reading its fingerprint.
+async function fingerprint(page) {
+  await page.waitFor("!document.documentElement.dataset.busy");
+  return page.evaluate(FINGERPRINT);
+}
 const button = (card, text) => `.card:nth-of-type(${card + 1}) button[title^="${text}"]`;
 
 test("editing: tapping a beat switches it off; undo and redo step through it", { skip }, () =>
@@ -186,8 +191,9 @@ test("editing: while playing, an edit waits for the next cycle and playback carr
     assert.ok(before < 1.9, `too near the boundary to test (${before} s)`);
 
     await tap(page, '.band[data-layer="0"][data-beat="2"]');
-    assert.equal(await page.evaluate("document.getElementById('pending').hidden"), false,
-      "the change should wait for the next cycle");
+    // The sound is made a moment after the tap; then the change is waiting.
+    await page.waitFor("!document.documentElement.dataset.busy");
+    await page.waitFor("!document.getElementById('pending').hidden", 2);
     assert.equal(await page.evaluate("document.getElementById('play').textContent"), "Pause",
       "playback must not stop for an edit");
 

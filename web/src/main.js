@@ -378,9 +378,9 @@ const narrow = () => window.innerWidth < 700;
 // How wide to lay the drawing out, in its own units. The browser scales it to
 // fit the space on screen, so on a smaller screen a narrower layout keeps the
 // text readable: 1.25 units per pixel, between 900 and 1600 (see view.js).
-// On a phone the drawing is never narrower than 760 pixels -- it scrolls
+// On a phone the drawing is never narrower than 640 pixels -- it scrolls
 // sideways instead (see page.html) -- so that is the space it has.
-const drawingWidth = () => Math.max(760, $("figure").clientWidth || window.innerWidth) * 1.25;
+const drawingWidth = () => Math.max(640, $("figure").clientWidth || window.innerWidth) * 1.25;
 
 // Turning a phone or iPad round, or resizing a window, changes how much room
 // the drawing has. Redraw when the layout it would get changes noticeably --

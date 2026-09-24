@@ -52,7 +52,13 @@ const $ = (id) => document.getElementById(id);
 
 // Put a message in the message line, optionally with a button that fixes
 // what it is about: { label, onClick }.
+//
+// A refusal ("error") holds the line until the next change that succeeds, so
+// the sound of an edit made just before it cannot replace it with routine
+// notes before it has been read.
+let showingError = false;
 function say(text, kind = "", fix = null) {
+  showingError = kind === "error";
   $("message").textContent = text;
   $("message").className = `message ${kind}`;
   if (fix) {
@@ -126,6 +132,7 @@ function check(spec, name) {
       `${MAX_SECONDS} s. Use fewer loops or a shorter cycle.`, "error");
     return null;
   }
+  showingError = false;  // this change succeeded, so any earlier refusal is past
   return { piece, derived: pieceToDerived(piece), mix: null, peak: 0, wav: null, print: null };
 }
 
@@ -216,7 +223,7 @@ function soundNow() {
   if (made.mix === null) {
     sound(made);
     player.swap(made.mix, made.piece.sampleRate, timing());
-    notices(made);
+    if (!showingError) notices(made);
     showFingerprint();
   }
   delete document.documentElement.dataset.busy;

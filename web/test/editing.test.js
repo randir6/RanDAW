@@ -283,6 +283,20 @@ test("editing: Escape puts the step keypad away", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
   }));
 
+test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>
+  editing("rests", async (page) => {
+    // Both in the same instant: a good edit (its sound is made 25 ms later),
+    // then one that breaks a rule. The refusal must still be showing after.
+    await page.evaluate(`{
+      document.querySelectorAll(".card .beat")[0].click();
+      const field = document.querySelector(".card input.sequence");
+      field.value = "- -";
+      field.dispatchEvent(new Event("change"));
+      true }`);
+    await page.waitFor("!document.documentElement.dataset.busy");
+    assert.match(await page.evaluate("document.getElementById('message').textContent"), /all rests/);
+  }));
+
 test("editing: a refused change leaves the controls showing the real piece", { skip }, () =>
   editing("rests", async (page) => {
     // Removing the piece's scale is refused: the rests layers need it.

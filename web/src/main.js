@@ -6,9 +6,11 @@
 // the one piece of state -- the piece being edited, and its undo history --
 // and connects the rest to it.
 
+import { pieceToDerived } from "./derive.js";
+import { loadDraft, saveDraft } from "./draft.js";
 import { scaleGains, toggleBeat } from "./edit.js";
 import { renderEditor } from "./editor.js";
-import { pieceToDerived } from "./derive.js";
+import { download, fromBase64 } from "./files.js";
 import { fnv1a } from "./fingerprint.js";
 import { buildPiece } from "./piece.js";
 import { createPlayer } from "./player.js";
@@ -36,8 +38,6 @@ const PRISTINE = "<!doctype html>\n" + document.documentElement.outerHTML;
 const MAX_SECONDS = 120;
 // How many steps back Undo can go.
 const HISTORY = 200;
-// Where the piece is kept between visits, in this browser only.
-const DRAFT_KEY = "randaw-draft";
 
 // Any error ends up as an attribute on the page, where the automated checks
 // can see it, and as a message a person can read. Otherwise a broken page
@@ -75,14 +75,6 @@ function say(text, kind = "", fix = null) {
 
 const readBlock = (id) => JSON.parse($(id).textContent);
 
-// base64 text back into raw bytes. atob() gives a string with one character
-// per byte; charCodeAt reads each one's number.
-function fromBase64(text) {
-  const raw = atob(text);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes;
-}
 
 // Sample name -> decoded audio. Decoding them all up front takes a few
 // milliseconds for the built-in set.
@@ -201,7 +193,7 @@ function commit(next, { record = true } = {}) {
   if (s && !(state.spec.layer[s.layer] && s.step < sequenceOf(state.spec.layer[s.layer]).length)) {
     state.selected = null;
   }
-  saveDraft();
+  saveDraft(state.name, state.spec);
   show();
   soundSoon();
   return true;
@@ -335,7 +327,7 @@ function showFingerprint() {
 function rename(text) {
   const name = text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
   if (name) state.name = name;
-  saveDraft();
+  saveDraft(state.name, state.spec);
   show();
 }
 
@@ -417,44 +409,6 @@ window.addEventListener("resize", () => {
   }, 150);
 });
 
-// --- Keeping the piece between visits -----------------------------------------
-
-// The piece is saved in the browser's own storage after every edit, so a
-// reload -- or Safari quietly closing the tab -- does not lose it. That
-// storage belongs to this browser alone and can be cleared, which is why
-// Save piece is still the way to keep something. Wrapped in try, because
-// some browsers refuse storage altogether (private windows, for instance).
-function saveDraft() {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ name: state.name, spec: state.spec }));
-  } catch {
-    // no storage: nothing to do
-  }
-}
-function loadDraft() {
-  try {
-    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null");
-    return draft && typeof draft.name === "string" ? draft : null;
-  } catch {
-    return null;
-  }
-}
-
-// --- Saving things ---------------------------------------------------------------
-
-// Hand the browser some bytes as a file to save. A "blob" is a lump of data
-// held in memory; an object URL is a temporary address for it that a link
-// can point at.
-function download(data, filename, type) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  // Give the browser a moment to start the download before letting go.
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
 // --- Controls ---------------------------------------------------------------------
 
 $("play").addEventListener("click", togglePlay);
@@ -504,7 +458,7 @@ $("examples").addEventListener("change", () => {
   const example = examples.find((x) => x.name === $("examples").value);
   if (example && open(example.spec, example.name)) {
     other.remove();
-    saveDraft();
+    saveDraft(state.name, state.spec);
   }
 });
 
@@ -515,7 +469,7 @@ $("open").addEventListener("change", async () => {
   try {
     if (open(readSpec(await file.text(), file.name), name)) {
       showOther(`Opened: ${name}`);
-      saveDraft();
+      saveDraft(state.name, state.spec);
     }
   } catch (e) {
     if (!(e instanceof SpecError)) throw e;

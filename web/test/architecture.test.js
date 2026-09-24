@@ -21,7 +21,7 @@ const ENGINE = [
   "numbers.js", "scales.js", "layer.js", "spec.js", "piece.js", "schedule.js",
   "derive.js", "audio.js", "wav.js", "render.js", "edit.js", "fingerprint.js", "share.js",
 ];
-const PAGE = ["view.js", "editor.js", "player.js", "main.js"];
+const PAGE = ["view.js", "editor.js", "player.js", "draft.js", "files.js", "main.js"];
 
 const source = (file) => readFileSync(join(SRC, file), "utf8");
 const importsOf = (file) => [...source(file).matchAll(/from\s+"\.\/([\w-]+\.js)"/g)].map((m) => m[1]);

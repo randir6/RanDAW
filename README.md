@@ -180,6 +180,8 @@ web/
     view.js          drawing a piece in step notation. Draws only.
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
+    draft.js         keeping the piece in the browser between visits
+    files.js         saving a file from the page; base64 back to bytes
     fingerprint.js   a short hash of the audio, to compare devices
     edit.js          every change the editor can make: spec in, new spec out
     editor.js        the editing panel under the drawing

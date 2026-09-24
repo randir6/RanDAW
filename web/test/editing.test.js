@@ -82,6 +82,17 @@ test("editing: tapping a beat switches it off; undo and redo step through it", {
     assert.equal(await fingerprint(page), print(spec));
   }));
 
+test("editing: the beat buttons in a card switch beats, like tapping the drawing", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const spec = example("tresillo");  // the kick has 8 beats, on at 1, 4 and 7
+    const pressed = "[...document.querySelectorAll('.card')[0].querySelectorAll('.beat')].map((b) => b.getAttribute('aria-pressed'))";
+    assert.deepEqual(await page.evaluate(pressed),
+      ["true", "false", "false", "true", "false", "false", "true", "false"]);
+    await click(page, ".card .beat", 1);  // beat 2 of the kick
+    assert.equal(await fingerprint(page), print(toggleBeat(spec, 0, 2)));
+    assert.equal((await page.evaluate(pressed))[1], "true");
+  }));
+
 test("editing: mute and solo change what sounds, and fade what does not", { skip }, () =>
   editing("tresillo", async (page) => {
     const spec = example("tresillo");

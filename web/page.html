@@ -78,7 +78,7 @@
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   @media (max-width: 600px) { body { padding: 16px; } }
-  h1 { font-size: 20px; margin: 0 0 2px; font-weight: 650; }
+  h1 { font-size: 22px; margin: 0 0 2px; font-weight: 700; letter-spacing: -0.01em; }
   .meta { color: var(--ink-2); margin: 0 0 14px; }
   .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   button, select, .file-button {
@@ -95,7 +95,12 @@
      looks like a button; clicking the label opens the picker. */
   .file-button { display: inline-flex; align-items: center; }
   .file-button input { display: none; }
-  #play { min-width: 92px; font-weight: 600; }
+  /* Play is the button used most, so it is the one that stands out. */
+  #play { min-width: 92px; font-weight: 650; background: var(--ink); color: var(--page); border-color: var(--ink); }
+  #play:disabled { background: var(--surface); color: var(--ink); border-color: var(--bar); }
+  .group { display: inline-flex; flex-wrap: wrap; gap: 10px; }
+  /* On a wide screen the saving buttons sit at the far right. */
+  .group.save { margin-left: auto; }
   .clock { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 120px; }
   .window { color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .hint { color: var(--muted); font-size: 13px; }
@@ -176,6 +181,9 @@
   /* --- The editor ----------------------------------------------------------- */
   .editor { margin-top: 18px; display: grid; gap: 10px; }
   .editor .bar { margin: 0; }
+  /* The piece-wide settings get a panel of their own, like the layers. */
+  .piece-controls { background: var(--surface); border-radius: 12px; padding: 10px 12px; }
+  .panel-title { font-weight: 650; margin-right: 6px; }
   .label { color: var(--ink-2); font-size: 13px; margin-right: 4px; }
   .unit { color: var(--ink-2); margin-left: 3px; }
   .field { display: inline-flex; align-items: center; gap: 4px; }
@@ -213,6 +221,18 @@
   }
   .tile.selected { outline: 3px solid var(--ink); outline-offset: 1px; }
   .grow { min-width: 36px; padding: 6px 8px; }
+  /* A button per beat: filled when the beat sounds, hatched when it is off --
+     the same look as the drawing, so the two read as one thing. */
+  .beats-on { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .beat {
+    min-width: 34px; min-height: 34px; padding: 4px 6px; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .beat[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 30%, var(--surface)); font-weight: 650; }
+  .beat[aria-pressed="false"] {
+    color: var(--ink-2);
+    background: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--muted) 25%, transparent) 4px 5px);
+  }
   .sequence-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   input.sequence { width: 13em; font-family: ui-monospace, Menlo, monospace; }
   .field-error { color: var(--error); font-size: 13px; }
@@ -242,9 +262,12 @@
 <div class="bar">
   <select id="examples" aria-label="Example pieces"></select>
   <label class="file-button">Open…<input id="open" type="file" accept=".json,application/json"></label>
-  <button id="download" type="button">Download WAV</button>
-  <button id="save-piece" type="button">Save piece</button>
-  <button id="save-page" type="button">Save page</button>
+  <!-- Getting things out, grouped apart from getting things in. -->
+  <span class="group save">
+    <button id="download" type="button">Download WAV</button>
+    <button id="save-piece" type="button">Save piece</button>
+    <button id="save-page" type="button" title="A copy of this page with your piece inside: one file to share">Save page</button>
+  </span>
 </div>
 
 <div class="bar">

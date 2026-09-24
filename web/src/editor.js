@@ -12,7 +12,7 @@
 import {
   addLayer, effectiveScale, formatSequence, insertStep, MAX_BEATS, MAX_LOOPS, parseSequence,
   removeLayer, removeStep, sequenceKey, setBeats, setLayer, setSequence, setSetting, setStep,
-  switchPitchKind, toggleMute, toggleSolo,
+  switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
 import { SCALES } from "./scales.js";
@@ -75,6 +75,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
 
   const cycle = derived.cycle_duration;
   const pieceRow = h("div", { class: "bar piece-controls" },
+    h("span", { class: "panel-title" }, "Piece"),
     h("button", { type: "button", disabled: !history.canUndo, onclick: actions.undo, title: "Undo (Ctrl+Z / ⌘Z)" }, "↶ Undo"),
     h("button", { type: "button", disabled: !history.canRedo, onclick: actions.redo, title: "Redo" }, "↷ Redo"),
     h("label", { class: "field" },
@@ -182,8 +183,22 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       sequenceField(seq, i),
     );
 
+    // One button per beat, pressed when the beat is on: the same as tapping
+    // beats in the drawing, but big enough to hit on a phone however many
+    // beats there are, and usable from a keyboard or a screen reader.
+    const on = new Set(info.active ?? Array.from({ length: layer.beats }, (_, b) => b + 1));
+    const beatRow = h("div", { class: "beats-on", role: "group", "aria-label": `Beats of layer ${i + 1} that sound` },
+      h("span", { class: "label" }, "On"),
+      Array.from({ length: layer.beats }, (_, b) => b + 1).map((beat) =>
+        h("button", {
+          type: "button", class: "beat", "aria-pressed": String(on.has(beat)),
+          title: `Beat ${beat}: ${on.has(beat) ? "on" : "off"} in every cycle`,
+          onclick: () => edit((s) => toggleBeat(s, i, beat)),
+        }, String(beat))),
+    );
+
     return h("div", { class: `card l${i}${info.audible ? "" : " silent"}`, "data-layer": i },
-      head, strip, isSelected && keypad(layer, i, selected.step));
+      head, beatRow, strip, isSelected && keypad(layer, i, selected.step));
   }
 
   // The same sequence as text, for typing or pasting a long one. Changes on

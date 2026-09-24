@@ -192,94 +192,116 @@ rather than a change of scope.
 
 ---
 
-## Phase 7 — Extract a Piece
+## Phase 7 — Spec and Piece
 
-**Goal.** Move settings resolution out of `generate.py`'s `main()` and into
-the package, so a second front end can reuse it.
+*Revised after a critical review of the first draft — see "Why the plan
+changed" below.*
 
-```python
-# polyrhythm/piece.py
-@dataclass(frozen=True)
-class Piece:
-    layers, loops, samples_per_pulse, sample_rate
-    # derived: lcm_beats, total_pulses, cycle_duration, total_duration
+**Goal.** Separate what the user *wrote* from what gets *rendered*, and move
+both out of `generate.py`'s `main()`.
 
-def build_piece(layers, settings) -> Piece     # raises PieceError
-```
+- **Spec** — what the user wrote: degrees, scale, root, 1-based active beats,
+  rests as `"-"`. A plain dict in the TOML schema. TOML and JSON become two
+  serialisations of the same spec. CLI `--layer` strings convert into the
+  same shape, so there is one path, not two.
+- **Piece** — what gets rendered: resolved semitones, 0-based indices,
+  `samples_per_pulse`, derived timing. Built by `build_piece(spec)`, which
+  raises `PieceError` and returns warnings as data rather than printing them,
+  because a GUI does not want stdout.
 
-**Why this first, and why it is not optional.** About sixty lines of `main()`
-currently do the work of turning "what the user asked for" into "what to
-render": merging CLI over config, choosing between cycle and pulse duration,
-computing `samples_per_pulse`, rounding, the length guard. Every branch of it
-calls `parser.error()`, so it is welded to argparse. A GUI would have to
-reimplement all of it, and the two copies would drift the first time either
-changed — exactly the problem `make_layer()` was extracted to solve for
-layers.
+`generate.py` becomes: argparse → spec (CLI merged over file) → `build_piece`
+→ `schedule` → `render_audio` → write.
 
-**Done when.** `generate.py` is argparse → merge → `build_piece` → `schedule`
-→ `render_audio` → write, and the reference renders are byte-identical.
+**Settled.** `Piece` is single-pattern and is *not* pre-shaped for sections.
+A section is meant to be an override, not a re-declaration, so a list of
+Piece-shaped sections would be the wrong shape anyway. `max_duration` stays
+with the caller, since it is policy rather than maths.
 
-**Open.** Whether `Piece` should hold a list of sections from the start
-(empty or one-element for now) so phase 11 is additive rather than a reshape.
-Cheap foresight if so; do not build section *behaviour* here.
+**Done when.** The reference renders are byte-identical, and a spec survives
+TOML → dict → JSON → dict unchanged.
 
 ---
 
-## Phase 8 — Schedule as data
+## Phase 8 — The grid
 
-**Goal.** Give the schedule a machine-readable form, and give an `Event`
-enough context to draw.
+**Goal.** A view of the piece that includes the silences.
 
-- Add `beat` to `Event` — which of its layer's own beats it is. A drawing of
-  "beat 3 of 5" cannot be derived from `pulse` alone without the Layer.
-- A `schedule_json(piece)` producing timing (cycle duration, total duration,
-  LCM, loops), layer metadata (beat count, sample name), and events with both
-  pulse and seconds.
-- Expose it: `--dump-schedule --json`, or a separate flag.
+One internal loop yields **every** cell — each layer × cycle × beat — with a
+status (`note`, `rest`, `inactive`), its pitch, and a label (what the user
+wrote there: a degree for degree layers, a semitone for note layers).
+`schedule()` keeps only the notes, so its output is unchanged. The grid keeps
+everything. One loop feeding both, so the logic is not duplicated.
 
-**Why here.** The visualiser needs exactly this and nothing more. Splitting
-it out means the GUI phase is purely about the browser, not about inventing a
-data format at the same time.
+`Event` gains `beat`. JSON output carries the spec (the half that round-trips)
+plus the derived timing, layer metadata and cells (the half that doesn't).
 
-**Done when.** The JSON round-trips, its event count matches the schedule,
-and its times match `--dump-schedule`.
-
-**Size.** Small. The `beat` field was already on the backlog.
+**Done when.** `schedule()` output is byte-identical to before; every layer ×
+cycle × beat has exactly one cell; rests and inactive beats appear as cells;
+the spec round-trips.
 
 ---
 
 ## Phase 9 — Static visualiser
 
-**Goal.** `--visualise out.html` writes one self-contained file: the schedule
-inlined as JSON, the render inlined as a base64 data URI, and a page that
-animates the polyrhythm in time with the audio. Open it in a browser, press
-play, watch and listen. No server, no process, no new dependency.
+**Goal.** `--visualise out.html`: one self-contained file with the grid and
+the audio inlined. Open, press play, watch and listen.
 
-**Shape.** Concentric rings, one per layer, each divided into that layer's
-beat count. All rings are the same cycle, which is what makes the polyrhythm
-visible: a 3-ring and a 4-ring fill the same circle. A hand sweeps once per
-cycle; a beat flashes as it sounds; rests and inactive beats are drawn
-differently so the distinction is finally visible rather than explained.
+**Shape: step notation, not rings.** One row per layer. Each row spans one
+cycle and is divided into that layer's beats, so columns line up in *time*:
+a 3-row and a 4-row meet only on the downbeat, which is the polyrhythm made
+visible — the same property the rings had, in a form that reads like drummer
+notation. Several cycles side by side, so phasing and travelling rests show
+up as visible patterns across bars.
 
-**Why static first.** The genuinely new work is the drawing and the
-audio-to-animation sync. Doing that with no server means debugging one new
-thing instead of two. The result is also shareable and survives the session.
+**A window of four cycles** that pages with playback, rather than the whole
+render. Horizontal density is the real limit: a 16-beat layer across 8
+cycles is 128 cells, about 11 px each on a laptop — too narrow for a number.
 
-**Sync.** Drive the animation from the `<audio>` element's `currentTime`
-inside `requestAnimationFrame`, never from a separate timer, or the two drift
-apart within seconds.
+**Layer cap: 5, in the visualiser only.** VISION.md forbids a layer limit in
+the core data model, so `Piece`, `Layer` and the renderer stay unlimited. The
+cap is one constant and one check, with row layout computed from the layer
+count rather than hard-coded, so lifting it is a one-line change.
 
-**Size check.** A 16-second render is 1.41 MB raw, 1.88 MB as base64 —
-fine inline. A two-minute render would be ~14 MB, which is silly; warn past a
-threshold rather than refusing.
+**No musical logic in JavaScript.** Python produces the fully resolved grid;
+the page only draws it. Otherwise the scheduling would be reimplemented in a
+second language, untested — and every rule stays checkable in `qa_check.py`.
+It also keeps the JavaScript small, which matters in a learning project that
+is about to gain a second language.
 
-**Done when.** Opening the file plays the render with the rings moving in
-time. Verifiable here with the pre-installed Chromium via Playwright, so it
-can be screenshotted rather than assumed.
+**Playback through the Web Audio API, not `<audio loop>`.** The HTML audio
+element leaves an audible gap at the loop point in most browsers; a looped
+Web Audio buffer is sample-accurate. For a tool whose entire output is loops
+— and which fixed a loop click in phase 1 — this is not optional. Animation is
+driven from the audio clock, never a separate timer.
 
-**Then immediately:** use it on `configs/rests.toml` to settle the open
-question about rest behaviour. Watching a rest walk round a ring should
-answer in seconds what prose has not.
+**Plain HTML, SVG and JavaScript.** No framework, no build step, no CDN, so
+it works offline and there is nothing to install. Commented to the same
+standard as the Python.
+
+**`?t=3.2` renders a still frame at that moment.** Useful for linking to a
+spot, and it is what makes the page verifiable here: headless Chromium, no
+new dependency. It needs `--headless=new` plus render-wait flags — the naive
+invocation silently wrote blank images while reporting success.
+
+**Done when.** Screenshots at several `?t` values agree with the grid JSON.
+Then use it on `configs/rests.toml` to settle the open question.
+
+---
+
+## Why the plan changed
+
+The first draft of phases 7–9 had two faults that would have surfaced only
+at the end:
+
+1. **The event list cannot show silence.** Rests and inactive beats produce
+   no events, so the visualiser — whose headline job was to show where rests
+   land — would have had nothing to draw. Hence the grid in phase 8.
+2. **A Piece cannot round-trip.** Degrees, scale and root are resolved to
+   semitones when a layer is built, by design, so a Piece can only be written
+   back as semitones and the GUI could never change a scale. The half of the
+   JSON that round-trips has to be the spec. Hence the split in phase 7.
+
+Both were checked against the code rather than assumed.
 
 ---
 

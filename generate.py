@@ -2,9 +2,18 @@
 """The command-line front end: the bit you actually run.
 
 Its job is everything to do with the OUTSIDE world -- reading arguments,
-checking them, catching bad input, writing the file. The musical logic all
-lives in the polyrhythm/ package. Keeping that separation means a different
-front end (a config file reader, a web UI) can reuse the core untouched.
+turning them into a spec, reporting problems, writing files. Everything
+musical, including working out what a spec means, lives in the polyrhythm/
+package. That separation is what lets another front end (a GUI) reuse the
+core untouched.
+
+The flow, start to finish:
+
+    arguments / config file  ->  spec          (what the user wrote)
+    spec                     ->  Piece         (build_piece: checked, resolved)
+    Piece                    ->  events        (schedule: when every note happens)
+    events                   ->  audio         (render_audio)
+    audio                    ->  .wav file
 
 The first line above is a "shebang": on Mac/Linux it lets the file be run
 directly as ./generate.py rather than `python3 generate.py`.
@@ -16,12 +25,12 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from polyrhythm.config import ConfigError, load_config
-from polyrhythm.layer import parse_layer_arg
+from polyrhythm.layer_arg import parse_layer_arg
+from polyrhythm.piece import DEFAULT_CYCLE_DURATION, build_piece
 from polyrhythm.render import render_audio
-from polyrhythm.schedule import lcm_of_beats, schedule
+from polyrhythm.schedule import schedule
+from polyrhythm.spec import SpecError, read_spec
 
-DEFAULT_CYCLE_DURATION = 2.0
 DEFAULT_MAX_DURATION = 120.0
 
 
@@ -33,8 +42,8 @@ def build_parser():
     )
     parser.add_argument(
         "--config",
-        help="Read the piece from a TOML file. Anything also given on the "
-        "command line overrides the file, so --loops 1 makes a quick preview "
+        help="Read the piece from a TOML or JSON file. Anything also given on "
+        "the command line overrides the file, so --loops 1 makes a quick preview "
         "without editing it. Paths inside the file resolve relative to the "
         "file itself.",
     )
@@ -48,9 +57,9 @@ def build_parser():
         action="append",
         # Not required, because --config is the alternative. Which of the two
         # was supplied is checked in main().
-        # `type` takes any function that converts a string. Our parser returns
-        # a Layer, so args.layers arrives as a list of Layer objects with the
-        # parsing and validation already done.
+        # `type` takes any function that converts a string. Ours returns a
+        # spec entry -- the same shape as a [[layer]] block in a config -- and
+        # has already checked it, so mistakes are reported immediately.
         type=parse_layer_arg,
         # Shown in --help and error messages in place of "LAYER".
         metavar="BEATS:NOTES:SAMPLE[:opt=v...]",
@@ -66,7 +75,7 @@ def build_parser():
     # These default to None rather than to their real defaults so that main()
     # can tell "the user asked for this" from "nothing was said", which is what
     # makes overriding a config possible.
-    parser.add_argument("--loops", type=int, help="Number of LCM cycles to render.")
+    parser.add_argument("--loops", type=int, help="Number of cycles to render.")
     parser.add_argument("--out", help="Output WAV path.")
 
     # A mutually exclusive group: argparse refuses if both are given, since
@@ -104,11 +113,47 @@ def build_parser():
     return parser
 
 
+def apply_overrides(spec: dict, args) -> dict:
+    """Lay the command-line settings over the spec's own.
+
+    Returns a new dict rather than changing the one passed in -- the caller's
+    spec stays as it was read. A shallow copy (`dict(spec)`) is enough here
+    because only top-level keys are replaced; the layer list is shared but
+    never modified.
+
+    The result is what actually gets rendered, so it is also what an export
+    should record: re-rendering from it reproduces this exact run.
+    """
+    spec = dict(spec)
+    for key, value in [
+        ("loops", args.loops),
+        ("sample_rate", args.sample_rate),
+        ("max_duration", args.max_duration),
+    ]:
+        # `is not None` rather than a truth test, because 0 is falsy and would
+        # be mistaken for "not given" instead of being rejected as invalid.
+        if value is not None:
+            spec[key] = value
+
+    # Tempo is handled apart from the rest because the two settings are
+    # alternatives, not values to merge: naming either on the command line
+    # replaces whichever the config chose.
+    if args.pulse_duration is not None or args.cycle_duration is not None:
+        # dict.pop(key, None) removes a key if present and does nothing if not.
+        spec.pop("pulse_duration", None)
+        spec.pop("cycle_duration", None)
+        if args.pulse_duration is not None:
+            spec["pulse_duration"] = args.pulse_duration
+        else:
+            spec["cycle_duration"] = args.cycle_duration
+    return spec
+
+
 def main():
     parser = build_parser()
     # Reads sys.argv, applies every rule above, and exits with a usage message
-    # if anything is wrong. Note that --layer strings are already Layer
-    # objects by the time they land here.
+    # if anything is wrong. Note that --layer strings are already checked spec
+    # entries by the time they land here.
     args = parser.parse_args()
 
     # parser.error() prints the message plus usage and exits with status 2.
@@ -121,103 +166,56 @@ def main():
 
     if args.config:
         try:
-            layers, settings = load_config(args.config)
-        except ConfigError as e:
+            spec, base_dir = read_spec(args.config)
+        except SpecError as e:
             parser.error(str(e))
+        source = args.config
     else:
-        layers, settings = args.layers, {}
+        # A command line's layers become a spec of the same shape a config file
+        # produces, so from here on there is only one path.
+        spec, base_dir, source = {"layer": args.layers}, Path("."), "command line"
 
-    # Resolve each setting: what the command line said, else what the file
-    # said, else the built-in default. `is not None` throughout rather than a
-    # truth test, because 0 is falsy and would be mistaken for "not given".
-    def setting(name, cli_value, default):
-        if cli_value is not None:
-            return cli_value
-        return settings.get(name, default)
+    spec = apply_overrides(spec, args)
 
-    loops = setting("loops", args.loops, None)
-    if loops is None:
-        parser.error("need --loops, on the command line or in the config")
-    out_path = setting("out", args.out, None)
-    if out_path is None:
+    try:
+        piece = build_piece(spec, base_dir, source)
+    except SpecError as e:
+        parser.error(str(e))
+
+    for warning in piece.warnings:
+        print(f"warning: {warning}")
+
+    # --out on the command line is relative to where you are; `out` inside a
+    # config is relative to the config, like every other path in it.
+    if args.out is not None:
+        out_path = args.out
+    elif "out" in spec:
+        out_path = str(base_dir / spec["out"])
+    else:
         parser.error("need --out, on the command line or in the config")
-    sample_rate = setting("sample_rate", args.sample_rate, 44100)
-    max_duration = setting("max_duration", args.max_duration, DEFAULT_MAX_DURATION)
 
-    if loops < 1:
-        parser.error(f"--loops must be >= 1, got {loops}")
-
-    lcm_beats = lcm_of_beats(layers)
-
-    # Tempo is handled apart from the rest because the two settings are
-    # alternatives, not values to merge: naming either one on the command line
-    # replaces whichever the config chose.
-    if args.pulse_duration is not None or args.cycle_duration is not None:
-        pulse_duration, requested_cycle = args.pulse_duration, args.cycle_duration
-    else:
-        pulse_duration = settings.get("pulse_duration")
-        requested_cycle = settings.get("cycle_duration")
-
-    if pulse_duration is not None:
-        if pulse_duration <= 0:
-            parser.error(f"pulse duration must be > 0, got {pulse_duration}")
-        samples_per_pulse = int(round(pulse_duration * sample_rate))
-        requested_cycle = None
-    else:
-        if requested_cycle is None:
-            requested_cycle = DEFAULT_CYCLE_DURATION
-        if requested_cycle <= 0:
-            parser.error(f"cycle duration must be > 0, got {requested_cycle}")
-        # Share the cycle out across the grid. This is the line that makes
-        # adding a layer subdivide the cycle rather than stretch it: a bigger
-        # LCM produces a finer grid, not a longer piece.
-        samples_per_pulse = int(round(requested_cycle * sample_rate / lcm_beats))
-
-    if samples_per_pulse < 1:
+    # The length limit is policy, so it lives here in the front end rather
+    # than in build_piece: a GUI might sensibly choose differently.
+    max_duration = spec.get("max_duration", DEFAULT_MAX_DURATION)
+    if piece.total_duration > max_duration:
         parser.error(
-            f"a {requested_cycle}s cycle split across an LCM of {lcm_beats} pulses leaves "
-            f"under one sample per pulse; lengthen --cycle-duration or choose beat counts "
-            f"sharing more common factors"
-        )
-
-    # Work back from the rounded integer to the cycle length we'll ACTUALLY
-    # produce, which may differ slightly from what was asked for.
-    cycle_duration = lcm_beats * samples_per_pulse / sample_rate
-    if requested_cycle is not None and abs(cycle_duration - requested_cycle) > requested_cycle / 100:
-        # Only complain past 1% -- below that it's inaudible, and warning
-        # about the inaudible teaches people to ignore warnings.
-        print(
-            f"warning: cycle rounded to {cycle_duration:.4f}s from {requested_cycle:.4f}s -- "
-            f"an LCM of {lcm_beats} does not divide the sample rate evenly"
-        )
-
-    total_duration = loops * cycle_duration
-    if total_duration > max_duration:
-        parser.error(
-            f"that would render {total_duration:.1f}s of audio "
-            f"({loops} loops of a {cycle_duration:.2f}s cycle), over the "
+            f"that would render {piece.total_duration:.1f}s of audio "
+            f"({piece.loops} loops of a {piece.cycle_duration:.2f}s cycle), over the "
             f"{max_duration:.0f}s limit. Render a shorter file with fewer --loops "
             f"or a shorter --cycle-duration, or raise --max-duration."
         )
 
-    # Check every file exists BEFORE rendering, so a typo fails immediately
-    # rather than part-way through the work.
-    missing = [layer.sample_path for layer in layers if not Path(layer.sample_path).is_file()]
-    if missing:
-        # join() glues a list of strings together with the given separator.
-        parser.error("sample file not found: " + ", ".join(missing))
-
     # Decide what happens when. Cheap -- well under a millisecond.
-    events = schedule(layers, loops)
+    events = schedule(piece.layers, piece.loops)
 
     if args.dump_schedule:
-        print(f"{len(events)} events over {loops} x {cycle_duration:.3f}s cycle")
+        print(f"{len(events)} events over {piece.loops} x {piece.cycle_duration:.3f}s cycle")
         # Format specs inside f-strings: {x:>9} right-aligns in 9 characters,
         # {x:6d} is an integer padded to 6, {x:+5d} always shows the sign, and
         # {x:.4f} is 4 decimal places. Together they line the columns up.
         print(f"{'time':>9}  {'pulse':>6}  {'layer':>5}  {'semis':>5}  gain  sample")
         for event in events:
-            seconds = event.pulse * samples_per_pulse / sample_rate
+            seconds = event.pulse * piece.pulse_duration
             print(
                 f"{seconds:9.4f}  {event.pulse:6d}  {event.layer:5d}  {event.semitones:+5d}  "
                 f"{event.gain:.2f}  {Path(event.sample_path).name}"
@@ -226,9 +224,9 @@ def main():
     try:
         mix = render_audio(
             events=events,
-            total_pulses=loops * lcm_beats,
-            samples_per_pulse=samples_per_pulse,
-            sample_rate=sample_rate,
+            total_pulses=piece.total_pulses,
+            samples_per_pulse=piece.samples_per_pulse,
+            sample_rate=piece.sample_rate,
         )
     except sf.LibsndfileError as e:
         # The file exists (we checked) but isn't readable audio -- a renamed
@@ -253,10 +251,10 @@ def main():
     # soundfile picks 16-bit PCM for .wav by default, which is what we want
     # for samplers like Koala. See NOTES.md -- it's a library default we rely
     # on rather than something this line states.
-    sf.write(out_path, mix, sample_rate)
+    sf.write(out_path, mix, piece.sample_rate)
     print(
-        f"wrote {out_path}: {len(mix)} samples ({len(mix) / sample_rate:.2f}s, "
-        f"{loops} x {cycle_duration:.3f}s cycle, peak {min(peak, 1.0):.2f})"
+        f"wrote {out_path}: {len(mix)} samples ({len(mix) / piece.sample_rate:.2f}s, "
+        f"{piece.loops} x {piece.cycle_duration:.3f}s cycle, peak {min(peak, 1.0):.2f})"
     )
 
 

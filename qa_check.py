@@ -25,9 +25,12 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from polyrhythm.layer import Layer, make_layer, parse_layer_arg
+from polyrhythm.layer import Layer, make_layer
+from polyrhythm.layer_arg import parse_layer_arg
+from polyrhythm.piece import build_piece
 from polyrhythm.scales import SCALES, degree_to_semitones
 from polyrhythm.schedule import schedule
+from polyrhythm.spec import SpecError, read_spec
 
 SR = 44100
 PULSE = 0.15
@@ -516,7 +519,7 @@ beats = 2
 notes = [0, 3]
 sample = "../impulse.wav"
 """)
-layers_cfg, _ = __import__("polyrhythm.config", fromlist=["load_config"]).load_config(str(scale_cfg))
+layers_cfg = build_piece(*read_spec(str(scale_cfg))).layers
 check("a global scale reaches the layer written in degrees",
       layers_cfg[0].notes == [0, 3], f"minor 1,3 -> {layers_cfg[0].notes}")
 check("a global scale leaves a semitone layer untouched",
@@ -588,7 +591,64 @@ for label, args, expect in [
 
 # "-5" must stay the number minus five rather than being read as a rest.
 check("a negative number is not mistaken for the rest marker",
-      parse_layer_arg(f"3:-5,0,-:{impulse}").notes == [-5, 0, None])
+      parse_layer_arg(f"3:-5,0,-:{impulse}")["notes"] == [-5, 0, "-"])
+
+# --- Spec and Piece ----------------------------------------------------------
+# A spec is what the user wrote; a Piece is what it means. The spec has to
+# survive being written out and read back unchanged -- that is what will let
+# a GUI save a piece and still offer its scale for editing.
+import json
+
+for config_file in sorted((ROOT / "configs").glob("*.toml")):
+    spec, _ = read_spec(str(config_file))
+    check(f"spec round-trips through JSON unchanged: {config_file.name}",
+          json.loads(json.dumps(spec)) == spec)
+
+piece_spec = {
+    "cycle_duration": 2.0, "loops": 3, "scale": "dorian",
+    "layer": [
+        {"beats": 3, "degrees": [1, "-", 5], "sample": str(impulse)},
+        {"beats": 4, "notes": [0], "sample": str(impulse), "gain": 0.5},
+    ],
+}
+piece = build_piece(piece_spec)
+check("a Piece knows its own timing",
+      piece.lcm_beats == 12 and abs(piece.cycle_duration - 2.0) < 1e-9
+      and abs(piece.total_duration - 6.0) < 1e-9 and piece.total_pulses == 36,
+      f"LCM {piece.lcm_beats}, {piece.cycle_duration}s x {piece.loops}")
+
+check("a Layer remembers what was written, not only what it resolved to",
+      piece.layers[0].written == [1, None, 5] and piece.layers[0].pitch_kind == "degrees"
+      and piece.layers[0].scale == "dorian" and piece.layers[0].notes == [0, None, 7])
+
+piece_spec["loops"] = 99
+check("a Piece keeps its own copy of the spec",
+      piece.spec["loops"] == 3, "changing the caller's dict afterwards has no effect")
+
+
+def _refused(spec_dict, expect):
+    try:
+        build_piece(spec_dict)
+    except SpecError as e:
+        return expect in str(e)
+    return False
+
+
+try:
+    piece.loops = 5
+    frozen = False
+except Exception:
+    frozen = True
+check("a Piece cannot be altered once built", frozen)
+
+check("a spec giving both tempo settings is refused rather than one silently winning",
+      _refused({"cycle_duration": 2.0, "pulse_duration": 0.1, "loops": 1,
+                "layer": [{"beats": 1, "notes": [0], "sample": str(impulse)}]}, "not both"))
+
+rounded = build_piece({"cycle_duration": 2.0, "loops": 1, "layer": [
+    {"beats": b, "notes": [0], "sample": str(impulse)} for b in (3, 4, 5, 7, 11, 13)]})
+check("warnings come back as data rather than being printed",
+      any("rounded" in w for w in rounded.warnings), f"{len(rounded.warnings)} warning(s)")
 
 print()
 if failures:

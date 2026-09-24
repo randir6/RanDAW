@@ -1,18 +1,15 @@
-"""What a layer IS, and how to read one from a command-line string.
+"""What a layer IS, and the rules a layer must obey.
 
 This module is deliberately the "boring" one: it holds the data and the
-parsing, and knows nothing about audio or timing.
+validation, and knows nothing about audio, timing, files or the command line.
+Reading a layer from text lives elsewhere -- `layer_arg.py` for the
+`--layer` syntax, `spec.py` for config files and JSON -- and all of those end
+up calling `make_layer()` below, so there is exactly one set of rules.
 """
 
-import argparse
 from dataclasses import dataclass
 
 from polyrhythm.scales import SCALES, degree_to_semitones, scale_names
-
-# The optional `key=value` fields allowed on the end of a --layer spec.
-# Kept as a tuple (immutable) since it never changes at runtime, and listed in
-# one place so the parser and the error messages can't drift apart.
-LAYER_OPTIONS = ("gain", "active", "degrees", "scale", "root")
 
 # Written in a sequence where a pitch would go, this means "sound nothing
 # here". It has to be a marker rather than a number because 0 is already a
@@ -36,7 +33,7 @@ class Layer:
     # Semitone offsets, e.g. [0, 3, 5]. None marks a rest: that position in
     # the sequence sounds nothing. By the time a Layer exists, scale degrees
     # have already been resolved to semitones, so this is the only pitch
-    # representation the rest of the program ever sees.
+    # representation the scheduler and renderer ever see.
     notes: list[int | None]
     sample_path: str
     # Fields with defaults. Because they have them, they must come after all
@@ -49,16 +46,30 @@ class Layer:
     # before this feature existed behave exactly as it did.
     #
     # Stored 0-BASED (first beat is 0) to match how Python indexes everything,
-    # even though the command line takes 1-based numbers the way musicians
-    # count. That conversion happens once, at parse time, below. Converting at
-    # the boundary and using one convention everywhere inside is the reliable
-    # way to avoid off-by-one bugs.
+    # even though people write 1-based numbers the way musicians count. That
+    # conversion happens once, in make_layer below. Converting at the boundary
+    # and using one convention everywhere inside is the reliable way to avoid
+    # off-by-one bugs.
     #
     # The default is None rather than an empty set for a specific Python
     # reason: a mutable default like `= set()` would be created ONCE and
     # shared by every Layer, so adding to one layer's set would silently
     # affect all the others. None sidesteps the trap entirely.
     active_beats: set[int] | None = None
+
+    # --- What the user wrote, kept for display only ---------------------------
+    # None of the fields below affect the sound. `notes` above is already the
+    # final answer. These exist so something drawing the piece can show the
+    # user's own notation -- "degree 3 of dorian" rather than "3 semitones" --
+    # which would otherwise be lost the moment degrees were resolved.
+    #
+    # `written` is the sequence exactly as given (degrees or semitones, with
+    # None for rests). None here means "same as notes", which is what a Layer
+    # built directly -- as the checks do -- gets without having to say so.
+    written: list[int | None] | None = None
+    pitch_kind: str = "notes"  # "notes" or "degrees"
+    scale: str | None = None
+    root: int = 0
 
 
 def make_layer(
@@ -73,10 +84,10 @@ def make_layer(
 ) -> Layer:
     """Validate the pieces of a layer and build one.
 
-    Both the command line and the config file end up here, so the rules live
-    in exactly one place and cannot drift apart as the two front ends grow.
-    Raises plain ValueError; each caller wraps it with its own context (which
-    --layer string, or which entry in which file).
+    Every way of describing a layer ends up here, so the rules live in exactly
+    one place and cannot drift apart as the front ends grow. Raises plain
+    ValueError; each caller wraps it with its own context (which --layer
+    string, or which entry in which file).
 
     A layer states its pitches EITHER as `notes` (raw semitones, right for
     drums and anything where a scale is meaningless) OR as `degrees` against
@@ -106,6 +117,7 @@ def make_layer(
             raise ValueError(f"unknown scale {scale!r}; expected one of: {scale_names()}")
         if not degrees:
             raise ValueError("degree sequence must not be empty")
+        written, pitch_kind = list(degrees), "degrees"
         # Degrees become semitones, and rests stay rests. A conditional
         # expression inside a comprehension: VALUE_IF if TEST else VALUE_ELSE,
         # evaluated for every item.
@@ -114,6 +126,8 @@ def make_layer(
         # A scale alongside raw semitones means someone expected the numbers
         # to be degrees. Better to say so than to silently ignore the scale.
         raise ValueError("scale given but pitches are notes (semitones); use degrees instead")
+    else:
+        written, pitch_kind = list(notes), "notes"
 
     if not notes:
         raise ValueError("note sequence must not be empty")
@@ -138,166 +152,13 @@ def make_layer(
         active = {n - 1 for n in active}
 
     return Layer(
-        beats=beats, notes=notes, sample_path=sample_path, gain=gain, active_beats=active
+        beats=beats,
+        notes=notes,
+        sample_path=sample_path,
+        gain=gain,
+        active_beats=active,
+        written=written,
+        pitch_kind=pitch_kind,
+        scale=scale,
+        root=root,
     )
-
-
-def _split_options(spec: str, rest: str) -> tuple[str, dict[str, str]]:
-    """Peel trailing `key=value` fields off the end, leaving the sample path.
-
-    Works from the right so that sample paths containing colons survive, and
-    so the options can be written in any order.
-    """
-    options: dict[str, str] = {}
-    while True:
-        # rpartition splits ONCE at the LAST separator and always returns
-        # three values: before, the separator, after. An empty separator means
-        # there was no colon left, so we're done.
-        head, separator, last_field = rest.rpartition(":")
-        if not separator:
-            break
-
-        # partition is the same idea from the left, splitting "gain=0.8" into
-        # "gain", "=", "0.8".
-        key, equals, value = last_field.partition("=")
-        if not equals or not key.isidentifier():
-            break  # not an option at all -- it's part of the path
-
-        if key not in LAYER_OPTIONS:
-            raise argparse.ArgumentTypeError(
-                f"invalid layer {spec!r}: unknown option {key!r}, "
-                f"expected one of {', '.join(k + '=' for k in LAYER_OPTIONS)}"
-            )
-        if key in options:
-            raise argparse.ArgumentTypeError(
-                f"invalid layer {spec!r}: {key}= given more than once"
-            )
-
-        options[key] = value
-        rest = head  # continue leftward, looking for more options
-    return rest, options
-
-
-def _parse_gain(value: str, spec: str) -> float:
-    """Text to number only -- whether the number is ALLOWED is make_layer's job."""
-    try:
-        return float(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: gain {value!r} is not a number"
-        ) from None
-
-
-def _parse_root(value: str, spec: str) -> int:
-    try:
-        return int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: root {value!r} must be a whole number of semitones"
-        ) from None
-
-
-def _parse_active(value: str, spec: str) -> list[int]:
-    """Turn "3,5,8" into [3, 5, 8]. Active beats are always real numbers --
-    silencing a beat is what active= is FOR, so a rest here would be noise."""
-    try:
-        return [int(n) for n in value.split(",")]
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: active beats {value!r} must be whole numbers, "
-            f"e.g. 'active=3,5,8'"
-        ) from None
-
-
-def _parse_sequence(value: str, spec: str, what: str) -> list[int | None]:
-    """Turn "0,-,7" into [0, None, 7], for notes and degrees alike.
-
-    The marker is compared as an exact string, so "-" is a rest while "-5" is
-    still the number minus five -- no ambiguity between the two.
-    """
-    items: list[int | None] = []
-    for token in value.split(","):
-        token = token.strip()
-        if token == REST:
-            items.append(None)
-            continue
-        try:
-            items.append(int(token))
-        except ValueError:
-            raise argparse.ArgumentTypeError(
-                f"invalid layer {spec!r}: {what} {token!r} must be a whole number "
-                f"or {REST!r} for a rest"
-            ) from None
-    return items
-
-
-def parse_layer_arg(spec: str) -> Layer:
-    """Parse "BEATS:NOTES:SAMPLE_PATH[:gain=G][:active=B,B,...]".
-
-    The `-> Layer` above is another hint, saying this function hands back a
-    Layer. Square brackets in the format string mean "optional part", and the
-    optional parts may appear in either order.
-
-    Raises ArgumentTypeError rather than ValueError so argparse prints these
-    messages instead of replacing them with its own generic text.
-    """
-    # try/except: attempt the code in `try`, and if it raises the named kind
-    # of error, run `except` instead of crashing.
-    try:
-        # Splitting "3:0,3,5:kick.wav" on ":" with maxsplit=2 gives exactly
-        # three pieces: it stops splitting after the second colon, so any
-        # further colons stay inside the third piece.
-        # Assigning three names at once like this is "tuple unpacking" -- it
-        # raises ValueError if there aren't exactly three pieces, which is
-        # itself a useful check.
-        beats_str, notes_str, rest = spec.split(":", maxsplit=2)
-
-        # int() converts text to a whole number, raising ValueError on junk.
-        beats = int(beats_str)
-
-        # An empty notes field ("8::pluck.wav:degrees=1,3,5") means the
-        # pitches are coming from degrees= instead. None, not [], so that
-        # make_layer can tell "not given" from "given but empty".
-        #
-        # Otherwise: a "list comprehension", building a list by running an
-        # expression over every item. The compact form of:
-        #     notes = []
-        #     for n in notes_str.split(","):
-        #         notes.append(int(n))
-        notes = _parse_sequence(notes_str, spec, "note") if notes_str else None
-    except ValueError:
-        # `from None` suppresses the "during handling of the above exception,
-        # another occurred" chain Python would otherwise print. The underlying
-        # ValueError adds noise here -- our message is clearer.
-        raise argparse.ArgumentTypeError(
-            f"invalid layer {spec!r}: expected BEATS:NOTES:SAMPLE_PATH[:gain=G][:active=B,...], "
-            f"e.g. '3:0,3,5:kick.wav' or '13:0:tom.wav:active=3,5,8'"
-            # !r inside an f-string inserts the repr() of the value, i.e. with
-            # quotes shown. Useful in errors so "3:0 " is visibly not "3:0".
-        ) from None
-
-    sample_path, options = _split_options(spec, rest)
-
-    gain = _parse_gain(options["gain"], spec) if "gain" in options else 1.0
-    active = _parse_active(options["active"], spec) if "active" in options else None
-    degrees = (
-        _parse_sequence(options["degrees"], spec, "degree") if "degrees" in options else None
-    )
-    root = _parse_root(options["root"], spec) if "root" in options else 0
-
-    # All the actual rules live in make_layer, shared with the config loader.
-    # We only add the context -- which --layer string went wrong. Keyword
-    # arguments throughout, so the order here can never silently mismatch.
-    try:
-        return make_layer(
-            beats=beats,
-            sample_path=sample_path,
-            notes=notes,
-            degrees=degrees,
-            scale=options.get("scale"),
-            root=root,
-            gain=gain,
-            active=active,
-        )
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(f"invalid layer {spec!r}: {e}") from None

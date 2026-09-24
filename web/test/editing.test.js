@@ -257,6 +257,31 @@ test("editing: the loop suggestion rounds up to whole repeats, keeping the lengt
     assert.deepEqual(await page.evaluate(button), ["Use 9 loops"]);
   }));
 
+test("editing: a clipping mix offers to turn everything down, and that cures it", { skip }, () =>
+  editing("tresillo", async (page) => {
+    // Every gain up to 1.5 is far too loud for four layers together.
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(`{
+        const slider = document.querySelectorAll(".card input[type=range]")[${i}];
+        slider.value = "1.5";
+        slider.dispatchEvent(new Event("change"));
+        true }`);
+    }
+    await page.waitFor("!document.documentElement.dataset.busy");
+    assert.match(await page.evaluate("document.getElementById('message').textContent"), /clipped/);
+    await click(page, "#message .fix");
+    await page.waitFor("!document.documentElement.dataset.busy");
+    assert.doesNotMatch(await page.evaluate("document.getElementById('message').textContent"), /clipped/);
+  }));
+
+test("editing: Escape puts the step keypad away", { skip }, () =>
+  editing("rests", async (page) => {
+    await click(page, ".card .tile", 0);
+    assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 1);
+    await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
+  }));
+
 test("editing: a refused change leaves the controls showing the real piece", { skip }, () =>
   editing("rests", async (page) => {
     // Removing the piece's scale is refused: the rests layers need it.

@@ -6,7 +6,7 @@
 // the one piece of state -- the piece being edited, and its undo history --
 // and connects the rest to it.
 
-import { toggleBeat } from "./edit.js";
+import { scaleGains, toggleBeat } from "./edit.js";
 import { renderEditor } from "./editor.js";
 import { pieceToDerived } from "./derive.js";
 import { fnv1a } from "./fingerprint.js";
@@ -50,9 +50,19 @@ window.addEventListener("error", (e) => {
 // `$` is just a short name for looking up an element by its id.
 const $ = (id) => document.getElementById(id);
 
-function say(text, kind = "") {
+// Put a message in the message line, optionally with a button that fixes
+// what it is about: { label, onClick }.
+function say(text, kind = "", fix = null) {
   $("message").textContent = text;
   $("message").className = `message ${kind}`;
+  if (fix) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "fix";
+    button.textContent = fix.label;
+    button.addEventListener("click", fix.onClick);
+    $("message").append(" ", button);
+  }
 }
 
 // --- The data built into the page ------------------------------------------------
@@ -134,15 +144,18 @@ function sound(made) {
 // clipping, and a piece too big to draw.
 function notices(made) {
   const notes = [...made.piece.warnings];
+  let fix = null;
   if (made.peak > 1) {
+    const factor = 0.99 / made.peak;
     notes.push(`the mix peaked at ${made.peak.toFixed(2)} and was clipped, which distorts -- ` +
-      `turn the layers down, e.g. multiply every gain by ${(0.99 / made.peak).toFixed(2)}`);
+      `turn the layers down, e.g. multiply every gain by ${factor.toFixed(2)}`);
+    fix = { label: "Turn every layer down to fit", onClick: () => edit((s) => scaleGains(s, factor)) };
   }
   if (made.derived.layers.length > MAX_LAYERS) {
     notes.push(`the drawing shows at most ${MAX_LAYERS} layers and this piece has ` +
       `${made.derived.layers.length}; it still plays and downloads`);
   }
-  say(notes.length ? `Note: ${notes.join("; ")}.` : "", notes.length ? "warn" : "");
+  say(notes.length ? `Note: ${notes.join("; ")}.` : "", notes.length ? "warn" : "", fix);
 }
 
 // Open a piece afresh: an example, a file, or the one saved in this page.
@@ -453,6 +466,11 @@ document.addEventListener("keydown", (e) => {
   }
   // Leave other keys alone while something like a button or menu has focus,
   // so space presses that button rather than doing two things at once.
+  // Escape puts away the step keypad, from anywhere.
+  if (e.key === "Escape" && state.selected) {
+    select(null, null);
+    return;
+  }
   if (e.target.closest("button, select, input, label, textarea")) return;
   if (e.code === "Space") {
     e.preventDefault();  // stop the page scrolling

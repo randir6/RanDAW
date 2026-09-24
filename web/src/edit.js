@@ -84,6 +84,17 @@ export function removeLayer(spec, index) {
   return next;
 }
 
+// Turn every layer down by the same factor, so the mix keeps its balance but
+// gets quieter. Rounded DOWN to two places, so the result is never louder
+// than asked for -- following it always cures the clipping it was offered for.
+export function scaleGains(spec, factor) {
+  const next = copy(spec);
+  for (const layer of next.layer) {
+    layer.gain = Math.floor((layer.gain ?? 1) * factor * 100) / 100;
+  }
+  return next;
+}
+
 export const toggleMute = (spec, index) =>
   setLayer(spec, index, "mute", spec.layer[index].mute ? null : true);
 export const toggleSolo = (spec, index) =>

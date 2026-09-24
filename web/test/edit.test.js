@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, formatSequence, insertStep, parseSequence, removeLayer, removeStep, setBeats,
+  addLayer, duplicateLayer, formatSequence, scaleGains, insertStep, parseSequence, removeLayer, removeStep, setBeats,
   setLayer, setSetting, setStep, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
@@ -126,6 +126,11 @@ test("duplicating a layer puts an exact copy straight after it", () => {
   assert.deepEqual(next.layer[3], spec.layer[2]);
   next.layer[2].gain = 0;  // the copy is independent of the original
   assert.notEqual(next.layer[1].gain, 0);
+});
+
+test("turning every layer down keeps the balance and never overshoots", () => {
+  const spec = { layer: [{ gain: 1 }, { gain: 0.5 }, {}] };
+  assert.deepEqual(scaleGains(spec, 0.618).layer.map((l) => l.gain), [0.61, 0.3, 0.61]);
 });
 
 test("a new layer uses a sample not already in the piece", () => {

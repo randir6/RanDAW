@@ -1,9 +1,9 @@
 // Checks on the built page, in a real browser.
 //
-// Builds dist/randaw.html, then opens it in headless Chromium (a browser with
-// no window) and reads back what the page reported about itself: the
-// data-... attributes it sets on its <html> element. Skipped, not failed,
-// when no Chromium is installed -- set CHROMIUM=/path/to/chrome to point at one.
+// Builds dist/randaw.html, then drives it in headless Chromium (a browser
+// with no window) through browser.js: open the page, run a little JavaScript
+// in it, wait for something to become true, read the result. Skipped, not
+// failed, when no Chromium is installed -- set CHROMIUM=/path/to/chrome.
 //
 // The key check is the audio fingerprint: the page renders every piece
 // itself, in the browser, and its fingerprint must match the one Node
@@ -11,160 +11,154 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 
 import { pieceToDerived } from "../src/derive.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { pageWithPiece } from "../src/share.js";
+import { findChromium, launch } from "./browser.js";
 import { readJson, renderWav, WEB } from "./helpers.js";
-
-function findChromium() {
-  if (process.env.CHROMIUM) return process.env.CHROMIUM;
-  const base = "/opt/pw-browsers";
-  if (!existsSync(base)) return null;
-  const found = readdirSync(base)
-    .filter((name) => name.startsWith("chromium-"))
-    .map((name) => join(base, name, "chrome-linux", "chrome"))
-    .filter(existsSync);
-  return found.at(-1) ?? null;
-}
 
 const chromium = findChromium();
 const skip = chromium === null ? "no headless Chromium found (set CHROMIUM=path)" : false;
 
-// Build once for all the checks below.
 const PAGE = join(WEB, "dist", "randaw.html");
-if (!skip) execFileSync(process.execPath, [join(WEB, "build.js")], { stdio: "ignore" });
+let browser = null;
+let scratch = null;
 
-// Open a page and return its <html> tag's attributes, and the whole page.
-function visit(file, query = "") {
-  const dom = execFileSync(chromium, [
-    "--headless=new", "--no-sandbox", "--disable-gpu", "--virtual-time-budget=5000",
-    "--dump-dom", `file://${file}${query}`,
-  ], { encoding: "utf8", timeout: 60000, stdio: ["ignore", "pipe", "ignore"] });
-  const tag = dom.match(/<html[^>]*>/)[0];
-  const attrs = Object.fromEntries([...tag.matchAll(/data-([\w-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
-  return { attrs, dom };
+before(async () => {
+  if (skip) return;
+  execFileSync(process.execPath, [join(WEB, "build.js")], { stdio: "ignore" });
+  scratch = mkdtempSync(join(tmpdir(), "randaw-page-"));
+  browser = await launch(chromium);
+});
+after(async () => browser?.close());
+
+// What the page says about itself: the data-... attributes on <html>.
+const ATTRS = "({ ...document.documentElement.dataset })";
+
+// Open a page, run `check` with it, and always close it afterwards.
+async function withPage(file, query, check) {
+  const page = await browser.open(`file://${file}${query}`);
+  try {
+    return await check(page);
+  } finally {
+    await page.close();
+  }
 }
+
+// A copy of the page with a piece saved inside, as "Save page" makes.
+function savedPage(name, spec) {
+  const file = join(scratch, `${Math.random().toString(36).slice(2)}.html`);
+  writeFileSync(file, pageWithPiece(readFileSync(PAGE, "utf8"), name, spec));
+  return file;
+}
+const layer = (beats, sample = "hat.wav") => ({ beats, notes: [0], sample, gain: 0.1 });
 
 const examples = readdirSync(join(WEB, "examples")).map((f) => f.replace(/\.json$/, ""));
 
 for (const name of examples) {
-  test(`page: ${name} renders the same audio as Node and draws every note`, { skip }, () => {
-    const spec = readJson(WEB, "examples", `${name}.json`);
-    const { attrs } = visit(PAGE, `?example=${name}&t=0`);
-    assert.equal(attrs.error, undefined, `page error: ${attrs.error}`);
-    assert.equal(attrs.ready, "1");
-    assert.equal(attrs["audio-fingerprint"], fnv1a(renderWav(spec).wav));
-
-    // Notes drawn on the first page: every sounding cell in its cycles.
-    const { piece } = renderWav(spec);
-    const perPage = Number(attrs.window);
-    const expected = pieceToDerived(piece).cells.filter((c) => c.status === "note" && c.cycle <= perPage).length;
-    assert.equal(Number(attrs["notes-drawn"]), expected);
-  });
+  test(`page: ${name} renders the same audio as Node and draws every note`, { skip }, () =>
+    withPage(PAGE, `?example=${name}&t=0`, async (page) => {
+      const attrs = await page.evaluate(ATTRS);
+      const spec = readJson(WEB, "examples", `${name}.json`);
+      const { piece, wav } = renderWav(spec);
+      assert.equal(attrs.error, undefined, `page error: ${attrs.error}`);
+      assert.equal(attrs.audioFingerprint, fnv1a(wav));
+      // Notes drawn on the first page: every sounding cell in its cycles.
+      const perPage = Number(attrs.window);
+      const expected = pieceToDerived(piece).cells
+        .filter((c) => c.status === "note" && c.cycle <= perPage).length;
+      assert.equal(Number(attrs.notesDrawn), expected);
+    }));
 }
-
-// Pages saved with a piece inside, as "Save page" makes them.
-const scratch = skip ? null : mkdtempSync(join(tmpdir(), "randaw-page-"));
-function savedPage(name, spec) {
-  const file = join(scratch, "shared.html");
-  writeFileSync(file, pageWithPiece(readFileSync(PAGE, "utf8"), name, spec));
-  return visit(file, "?t=0");
-}
-const layer = (beats, sample = "hat.wav") => ({ beats, notes: [0], sample, gain: 0.1 });
 
 test("page: a saved page opens with the piece saved into it", { skip }, () => {
   const spec = { cycle_duration: 1.5, loops: 2, layer: [layer(3), layer(4, "kick.wav")] };
-  const { attrs, dom } = savedPage("my groove", spec);
-  assert.equal(attrs.error, undefined);
-  assert.match(dom, /<title>my groove · RanDAW<\/title>/);
-  assert.equal(attrs["audio-fingerprint"], fnv1a(renderWav(spec).wav));
+  return withPage(savedPage("my groove", spec), "?t=0", async (page) => {
+    const attrs = await page.evaluate(ATTRS);
+    assert.equal(attrs.error, undefined);
+    assert.equal(await page.evaluate("document.title"), "my groove · RanDAW");
+    assert.equal(attrs.audioFingerprint, fnv1a(renderWav(spec).wav));
+  });
 });
 
-test("page: a name that looks like HTML cannot break out of the page", { skip }, () => {
-  const { attrs, dom } = savedPage("</script><b>bold</b>", { loops: 1, layer: [layer(3)] });
-  assert.equal(attrs.error, undefined);
-  assert.equal(attrs.ready, "1");
-  assert.doesNotMatch(dom, /<b>bold<\/b>/);
-});
+test("page: a name that looks like HTML cannot break out of the page", { skip }, () =>
+  withPage(savedPage("</script><b>bold</b>", { loops: 1, layer: [layer(3)] }), "?t=0", async (page) => {
+    assert.equal((await page.evaluate(ATTRS)).error, undefined);
+    assert.equal(await page.evaluate("document.querySelectorAll('b').length"), 0);
+    assert.equal(await page.evaluate("document.getElementById('title').textContent"), "</script><b>bold</b>");
+  }));
 
 test("page: six layers still play, but the drawing says why it is missing", { skip }, () => {
   const spec = { loops: 1, layer: [2, 3, 4, 5, 6, 7].map((b) => layer(b)) };
-  const { attrs, dom } = savedPage("six", spec);
-  assert.equal(attrs.error, undefined);
-  assert.equal(attrs["audio-fingerprint"], fnv1a(renderWav(spec).wav));
-  assert.match(dom, /<figure id="figure" hidden="">/);
-  assert.match(dom, /at most 5 layers and this piece has 6/);
+  return withPage(savedPage("six", spec), "?t=0", async (page) => {
+    const attrs = await page.evaluate(ATTRS);
+    assert.equal(attrs.error, undefined);
+    assert.equal(attrs.audioFingerprint, fnv1a(renderWav(spec).wav));
+    assert.equal(await page.evaluate("document.getElementById('figure').hidden"), true);
+    assert.match(await page.evaluate("document.getElementById('message').textContent"),
+      /at most 5 layers and this piece has 6/);
+  });
 });
 
-// Pressing the buttons. A script is added to a copy of the page that picks an
-// example, presses Download WAV, Save piece and Save page -- catching the
-// files instead of saving them -- then opens the saved piece through the
-// Open… button, and reports what happened in a data-probe attribute.
-const PROBE = `<script>
-(async () => {
-  const fnv = (b) => { let h = 0x811c9dc5; for (const x of b) h = Math.imul(h ^ x, 0x01000193); return (h >>> 0).toString(16).padStart(8, "0"); };
-  const saved = [];
-  HTMLAnchorElement.prototype.click = function () { saved.push({ name: this.download, href: this.href }); };
-  const bytes = async (s) => new Uint8Array(await (await fetch(s.href)).arrayBuffer());
-  const $ = (id) => document.getElementById(id);
-  const out = {};
-  $("examples").value = "seven";
-  $("examples").dispatchEvent(new Event("change"));
-  out.title = document.title;
-  $("download").click(); $("save-piece").click(); $("save-page").click();
-  out.names = saved.map((s) => s.name);
-  out.wav = fnv(await bytes(saved[0]));
-  out.piece = new TextDecoder().decode(await bytes(saved[1]));
-  const page = new TextDecoder().decode(await bytes(saved[2]));
-  out.pageOpensSeven = page.includes('id="randaw-piece">{"name":"seven"');
-  out.page = page;
-  const file = new DataTransfer();
-  file.items.add(new File([out.piece], "mine.json"));
-  $("open").files = file.files;
-  $("open").dispatchEvent(new Event("change"));
-  await new Promise((r) => setTimeout(r, 300));
-  $("open").files = file.files;
-  $("open").dispatchEvent(new Event("change"));
-  await new Promise((r) => setTimeout(r, 300));
-  out.afterOpen = document.title;
-  out.menuTop = $("examples").options[0].text;
-  out.menuLength = $("examples").options.length;
-  document.documentElement.dataset.probe = JSON.stringify(out);
-})().catch((e) => { document.documentElement.dataset.probe = JSON.stringify({ error: e.message }); });
-</script></body>`;
+test("page: a piece it cannot use gets a message, not a crash", { skip }, () =>
+  withPage(savedPage("typo", { loops: 1, layer: [layer(3, "kik.wav")] }), "?t=0", async (page) => {
+    assert.equal((await page.evaluate(ATTRS)).error, undefined);
+    assert.equal(await page.evaluate("document.getElementById('message').className"), "message error");
+    assert.match(await page.evaluate("document.getElementById('message').textContent"), /unknown sample kik\.wav/);
+  }));
 
-test("page: the buttons save the right files, and Open reads a saved piece back", { skip }, () => {
-  const file = join(scratch, "probe.html");
-  writeFileSync(file, readFileSync(PAGE, "utf8").replace("</body>", PROBE));
-  const { attrs } = visit(file);
-  const unescape = (s) => s.replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
-  const probe = JSON.parse(unescape(attrs.probe ?? '{"error": "no probe result"}'));
-  assert.equal(probe.error, undefined, probe.error);
-  assert.equal(probe.title, "seven · RanDAW");
-  assert.deepEqual(probe.names, ["seven.wav", "seven.json", "seven.html"]);
-  const spec = readJson(WEB, "examples", "seven.json");
-  assert.equal(probe.wav, fnv1a(renderWav(spec).wav), "downloaded WAV differs from Node's");
-  assert.equal(probe.piece, readFileSync(join(WEB, "examples", "seven.json"), "utf8"));
-  assert.ok(probe.pageOpensSeven, "saved page does not carry the piece");
-  // The saved page must itself work: open it, and it plays the same piece.
-  const shared = join(scratch, "saved-by-button.html");
-  writeFileSync(shared, probe.page);
-  const reopened = visit(shared, "?t=0").attrs;
-  assert.equal(reopened.error, undefined, reopened.error);
-  assert.equal(reopened["audio-fingerprint"], probe.wav, "the saved page plays something else");
-  assert.equal(probe.afterOpen, "mine · RanDAW");
-  assert.equal(probe.menuTop, "Opened: mine");
-  assert.equal(probe.menuLength, examples.length + 1, "opening twice added a second menu entry");
-});
+// Pressing the buttons. Saved files are caught instead of saved: the page
+// saves by clicking a hidden link, so link clicks are recorded instead.
+const CATCH_SAVES = `
+  window.saved = [];
+  HTMLAnchorElement.prototype.click = function () { window.saved.push({ name: this.download, href: this.href }); };
+  window.savedBytes = async (i) => new Uint8Array(await (await fetch(window.saved[i].href)).arrayBuffer());
+  window.fnv = (b) => { let h = 0x811c9dc5; for (const x of b) h = Math.imul(h ^ x, 0x01000193); return (h >>> 0).toString(16).padStart(8, "0"); };
+  true`;
 
-test("page: a piece it cannot use gets a message, not a crash", { skip }, () => {
-  const { attrs, dom } = savedPage("typo", { loops: 1, layer: [layer(3, "kik.wav")] });
-  assert.equal(attrs.error, undefined);
-  assert.equal(attrs.ready, "1");
-  assert.match(dom, /class="message error"[^>]*>unknown sample kik\.wav/);
-});
+test("page: the buttons save the right files, and Open reads a saved piece back", { skip }, () =>
+  withPage(PAGE, "", async (page) => {
+    await page.evaluate(CATCH_SAVES);
+    await page.evaluate(`{
+      const menu = document.getElementById("examples");
+      menu.value = "seven";
+      menu.dispatchEvent(new Event("change"));
+      for (const id of ["download", "save-piece", "save-page"]) document.getElementById(id).click();
+    }`);
+    assert.equal(await page.evaluate("document.title"), "seven · RanDAW");
+    assert.deepEqual(await page.evaluate("saved.map((s) => s.name)"), ["seven.wav", "seven.json", "seven.html"]);
+
+    const spec = readJson(WEB, "examples", "seven.json");
+    assert.equal(await page.evaluate("savedBytes(0).then(fnv)"), fnv1a(renderWav(spec).wav));
+    const pieceText = await page.evaluate("savedBytes(1).then((b) => new TextDecoder().decode(b))");
+    assert.equal(pieceText, readFileSync(join(WEB, "examples", "seven.json"), "utf8"));
+
+    // The saved page must itself work: open it, and it plays the same piece.
+    const shared = join(scratch, "saved-by-button.html");
+    writeFileSync(shared, await page.evaluate("savedBytes(2).then((b) => new TextDecoder().decode(b))"));
+    await withPage(shared, "?t=0", async (copy) => {
+      const attrs = await copy.evaluate(ATTRS);
+      assert.equal(attrs.error, undefined);
+      assert.equal(attrs.audioFingerprint, fnv1a(renderWav(spec).wav), "the saved page plays something else");
+    });
+
+    // Open the saved piece twice through the file picker.
+    for (let i = 0; i < 2; i++) {
+      await page.evaluate(`{
+        const picker = document.getElementById("open");
+        const files = new DataTransfer();
+        files.items.add(new File([${JSON.stringify(pieceText)}], "mine.json"));
+        picker.files = files.files;
+        picker.dispatchEvent(new Event("change"));
+      }`);
+      await page.waitFor("document.title === 'mine · RanDAW'");
+    }
+    assert.equal(await page.evaluate("document.getElementById('examples').options[0].text"), "Opened: mine");
+    assert.equal(await page.evaluate("document.getElementById('examples').options.length"), examples.length + 1,
+      "opening twice added a second menu entry");
+  }));

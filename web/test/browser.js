@@ -95,6 +95,9 @@ export async function launch(chromium) {
         { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send("Emulation.setEmulatedMedia",
         { features: [{ name: "prefers-color-scheme", value: dark ? "dark" : "light" }] }, sessionId);
+      // Give the page a moment to react to its new size (it redraws a little
+      // after a resize stops) before taking the picture.
+      await new Promise((r) => setTimeout(r, 400));
       const { data } = await send("Page.captureScreenshot", { format: "png" }, sessionId);
       return Buffer.from(data, "base64");
     }

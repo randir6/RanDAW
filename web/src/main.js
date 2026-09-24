@@ -16,7 +16,7 @@ import { finishMix, renderAudio } from "./render.js";
 import { schedule } from "./schedule.js";
 import { pageWithPiece } from "./share.js";
 import { formatSpec, readSpec, SpecError } from "./spec.js";
-import { createView, MAX_LAYERS } from "./view.js";
+import { createView, MAX_LAYERS, NARROWEST, WIDEST } from "./view.js";
 import { decodeWav, encodeWav16 } from "./wav.js";
 
 // Two things this code relies on arrived in Safari only in 2022 (iOS 15.4).
@@ -280,6 +280,7 @@ function show() {
       onSeek: (cycles) => { player.seek(cycles); refresh(); },
       // Narrow screens show fewer cycles at once, so each one is wider.
       maxPerPage: narrow() ? 2 : 4,
+      width: drawingWidth(),
     });
     if (state.selected) view.highlight(state.selected.layer, state.selected.step);
     $("text-grid").textContent = view.textGrid();
@@ -373,12 +374,26 @@ function changePage(delta) {
 // many cycles fit on a page. Redraw when that crosses the line -- only then,
 // since a resize fires many times while it happens.
 const narrow = () => window.innerWidth < 700;
-let wasNarrow = narrow();
+
+// How wide to lay the drawing out, in its own units. The browser scales it to
+// fit the space on screen, so on a smaller screen a narrower layout keeps the
+// text readable: 1.25 units per pixel, between 900 and 1600 (see view.js).
+// On a phone the drawing is never narrower than 760 pixels -- it scrolls
+// sideways instead (see page.html) -- so that is the space it has.
+const drawingWidth = () => Math.max(760, $("figure").clientWidth || window.innerWidth) * 1.25;
+
+// Turning a phone or iPad round, or resizing a window, changes how much room
+// the drawing has. Redraw when the layout it would get changes noticeably --
+// checked a moment after resizing stops, since a resize fires many times.
+let resizeTimer = null;
 window.addEventListener("resize", () => {
-  if (narrow() !== wasNarrow && state.made) {
-    wasNarrow = narrow();
-    show();
-  }
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!state.made || view === null) return;
+    const wanted = Math.max(NARROWEST, Math.min(WIDEST, drawingWidth()));
+    const perPage = narrow() ? 2 : 4;
+    if (Math.abs(wanted - view.width) > 40 || perPage !== view.maxPerPage) show();
+  }, 150);
 });
 
 // --- Keeping the piece between visits -----------------------------------------

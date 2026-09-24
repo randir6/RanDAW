@@ -182,6 +182,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
           },
         }),
         h("span", { class: "value" }, (layer.gain ?? 1).toFixed(2))),
+      h("span", { class: "card-actions" },
       h("button", {
         type: "button", class: "duplicate", disabled: spec.layer.length >= MAX_LAYERS,
         title: spec.layer.length >= MAX_LAYERS ? `The drawing shows at most ${MAX_LAYERS} layers` : "Duplicate this layer",
@@ -192,7 +193,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         type: "button", class: "remove", disabled: spec.layer.length === 1,
         title: "Remove this layer", "aria-label": `Remove layer ${i + 1}`,
         onclick: () => edit((s) => removeLayer(s, i)),
-      }, "✕"),
+      }, "✕")),
     );
 
     // The step strip: one tile per step of the sequence.

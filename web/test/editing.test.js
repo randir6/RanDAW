@@ -188,9 +188,10 @@ test("editing: the strip along the top jumps playback", { skip }, () =>
       document.querySelector(".ruler").dispatchEvent(new MouseEvent("click",
         { bubbles: true, clientX: ruler.left + ruler.width * 0.625, clientY: ruler.top + 5 }));
       true }`);
-    // Four cycles of 2 s across the strip: five-eighths of the way is 5 s.
-    const clock = await page.evaluate("document.getElementById('clock').textContent");
-    assert.match(clock, /^5\.00 \//);
+    // Four cycles of 2 s across the strip: five-eighths of the way is 5 s --
+    // give or take a couple of pixels, each about 0.01 s here.
+    const seconds = await page.evaluate("parseFloat(document.getElementById('clock').textContent)");
+    assert.ok(Math.abs(seconds - 5) < 0.03, `jumped to ${seconds} s`);
   }));
 
 test("editing: the piece survives a reload", { skip }, () =>

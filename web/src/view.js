@@ -17,8 +17,13 @@ export const MAX_LAYERS = 5;
 
 // Layout. The drawing is sized in its own units (1600 wide) and the browser
 // scales it to the window, so none of these numbers depend on screen size.
-const W = 1600, GUTTER = 210, RIGHT = 22, TOP = 48, ROW_H = 120, ROW_GAP = 12;
-const AREA = W - GUTTER - RIGHT;
+//
+// The width is chosen for the screen (see createView's `width`): the browser
+// scales the drawing to fit, so a narrower layout on a smaller screen means
+// the text is shrunk less and stays readable. Everything else is fixed.
+export const WIDEST = 1600;
+export const NARROWEST = 900;
+const GUTTER = 210, RIGHT = 22, TOP = 48, ROW_H = 120, ROW_GAP = 12;
 const MIN_CELL = 20;      // narrower than this and a labelled note will not fit
 const GUTTER_CHARS = 25;  // about as many small characters as fit in the gutter
 const GLOW = 0.13;        // seconds a note stays lit after it starts
@@ -54,7 +59,9 @@ function tip(node, text) {
 // This is a "factory function": everything declared inside it is private to
 // this one drawing, and the returned object is the only way in. Every change
 // to the piece makes a new view, so nothing left over can leak in.
-export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 4 } = {}) {
+export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 4, width = WIDEST } = {}) {
+  const W = Math.round(Math.max(NARROWEST, Math.min(WIDEST, width)));
+  const AREA = W - GUTTER - RIGHT;
   const nLayers = d.layers.length;
   const H = TOP + nLayers * (ROW_H + ROW_GAP) + 6;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -325,6 +332,8 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     pages,
     // Where the page `delta` pages away from this one starts, in cycles,
     // wrapping round at either end.
+    width: W,
+    maxPerPage,
     pageStart: (delta) => ((currentPage + delta + pages) % pages) * perPage,
   };
 }

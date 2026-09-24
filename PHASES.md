@@ -451,29 +451,60 @@ the above undone, plus a pinned rest and unsorted events) were each caught.
 
 ---
 
-## Phase 11 — Live editing
+## Phase 11 — Live editing — DONE
 
 **Goal.** Change the piece in the page and hear the change.
 
-**Settled already.**
+**Decided before starting.**
 
 - **Edits land on the next cycle boundary.** The loop keeps playing and the
   new version comes in on the next downbeat, like a sampler -- restarting on
   every change would break the groove.
-- **Samples: a menu of the built-in set.** Adding your own comes later (it
-  needs the file picker, and the shared page would carry them).
-- **Clicking a beat toggles `active`** -- silence this beat, every cycle,
-  which is unambiguous. Rests are typed into the sequence, because whether a
-  click in cycle 3 should also move silences in other cycles is exactly the
-  open question about rests.
-- **Adding and removing layers** is in.
-- **Saving** is already done: Save piece and Save page.
+- **Samples: a menu of the built-in set.** Adding your own comes later.
+- **Tapping a beat toggles `active`** -- silence this beat, every cycle,
+  which is unambiguous. Tapping the strip along the top jumps playback, since
+  a tap cannot mean both.
+- **Rests are set in the sequence**, not by tapping the drawing, because
+  whether a tap in cycle 3 should also move silences in other cycles is
+  exactly the open question about rests.
+- **A step strip rather than only typing.** One tile per sequence step, a
+  keypad for the chosen step, and a text box holding the same sequence.
+- **Mute and solo**, saved in the piece as `"mute": true` / `"solo": true`,
+  as a DAW keeps them in the project. Solo wins over mute.
+- **Undo and redo.** Adding and removing layers.
 
-**First step.** Retire the Python version, once the page has been tried on
-the iPad and laptop.
+**How it landed.**
 
-**Open.** How rests and switched-off beats should *look* different enough in
-an editor that nobody confuses them. Both are wanted.
+- **The Python version was retired first** (commit `a7e080e`), once the page
+  had played on a phone. Its recorded answers stay as the parity checks.
+- **`edit.js`** holds every change as a plain function, spec in, new spec out.
+  Undo is a list of old specs; the rules are checked by `buildPiece` as
+  always, so an edit that breaks one is refused with the engine's own message
+  and the last good version keeps playing.
+- **`editor.js`** rebuilds the panel from the piece after every change, so the
+  controls can never disagree with it.
+- **`player.js`** swaps versions with Web Audio scheduling: the new version
+  starts exactly on the next downbeat, carrying the cycle count on, and the
+  old one fades out over 15 ms so notes ringing across the boundary do not
+  click. Positions are counted in cycles, since an edit can change how long a
+  cycle is. A second edit before the boundary replaces the first.
+- **Choosing a step outlines everywhere it lands** in the drawing -- the open
+  question about travelling rests, made visible while editing.
+- **The piece is kept in the browser** between visits, so a reload does not
+  lose work. Save piece / Save page are still how to keep something.
+- **Narrow screens** show two cycles per page and let the drawing scroll
+  sideways inside its frame, rather than shrinking the labels to nothing.
+
+**Checks.** 59, including a set that drives the editor in a real browser and
+compares the page's audio against the same edit made directly -- which found
+that Redo was drawn disabled after an Undo (the redraw happened before the
+redo was recorded). A browser check also plays a piece, edits it mid-cycle,
+and confirms the change waits for the 2 s boundary while playback carries on.
+
+The browser checks moved from `--dump-dom` to driving Chrome over its
+debugging protocol (`test/browser.js`, no library): `--dump-dom` ran on a
+simulated clock and could read a page before real work had finished, which
+made one check fail about one run in three under load.
 
 ---
 

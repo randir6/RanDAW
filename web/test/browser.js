@@ -88,9 +88,20 @@ export async function launch(chromium) {
       }
     }
 
+    // A picture of the page as it is now, as PNG bytes. `width` and
+    // `height` set the size of the window first.
+    async function screenshot({ width = 1280, height = 900, dark = false } = {}) {
+      await send("Emulation.setDeviceMetricsOverride",
+        { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
+      await send("Emulation.setEmulatedMedia",
+        { features: [{ name: "prefers-color-scheme", value: dark ? "dark" : "light" }] }, sessionId);
+      const { data } = await send("Page.captureScreenshot", { format: "png" }, sessionId);
+      return Buffer.from(data, "base64");
+    }
+
     const close = () => send("Target.closeTarget", { targetId });
     await waitFor("document.readyState === 'complete' && document.documentElement.dataset.ready === '1'");
-    return { evaluate, waitFor, close };
+    return { evaluate, waitFor, screenshot, close };
   }
 
   async function close() {

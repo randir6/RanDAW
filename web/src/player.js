@@ -1,23 +1,52 @@
-// Playing the rendered audio, on a loop, through the Web Audio API.
+// Playing the rendered audio, on a loop, through the Web Audio API -- and
+// swapping in an edited version without stopping.
 //
 // Why not an <audio> element? One set to loop leaves a small gap each time it
 // starts over, which is exactly wrong for a tool whose whole output is loops.
 // A Web Audio buffer loops sample-accurately.
 //
 // The audio clock (ctx.currentTime) is the one source of truth for where
-// playback is. The drawing asks position() before each screen refresh and
-// follows it, so picture and sound cannot drift apart.
+// playback is. The drawing asks where playback is before each screen refresh
+// and follows it, so picture and sound cannot drift apart.
+//
+// Positions are counted in CYCLES (2.5 = halfway through the third cycle)
+// rather than seconds, because an edit can change how long a cycle is. The
+// cycle count is what carries over when one version of a piece replaces
+// another.
 
 import { encodeWav16 } from "./wav.js";
 
+// An edit lands at the next cycle boundary -- unless that is less than this
+// many seconds away, when there is not reliably time to set it up, so it lands
+// at the one after.
+const MIN_LEAD = 0.05;
+// The old version fades out over this long as the new one comes in, so notes
+// still ringing at the boundary do not stop with a click.
+const FADE = 0.015;
+
+// Where an edit should come in, given where playback is now.
+//
+// `now` is the current position in cycles; `current` and `next` describe the
+// old and new versions: { cycle: seconds per cycle, loops: cycles in the loop }.
+// Returns how many seconds to wait, and which cycle of the new version to
+// start from -- the same cycle count playback was about to reach, wrapped
+// into the new version's length. A plain function so the checks can test it.
+export function planSwap(now, current, next) {
+  let boundary = Math.floor(now) + 1;
+  if ((boundary - now) * current.cycle < MIN_LEAD) boundary += 1;
+  // The cycle the old version was about to enter. At the end of its loop
+  // that is cycle 0 again, and the new version starts from its beginning too.
+  const entering = boundary % current.loops;
+  return { wait: (boundary - now) * current.cycle, startCycle: entering % next.loops };
+}
+
 export function createPlayer() {
-  let ctx = null;       // the AudioContext, made on first use
-  let audio = null;     // the current piece: { samples, sampleRate }
-  let buffer = null;    // the same audio, made ready to play (on first play)
-  let source = null;    // what is playing right now, if anything
+  let ctx = null;        // the AudioContext, made on first use
+  let latest = null;     // the newest audio: { samples, sampleRate, cycle, loops, buffer }
+  let sounding = null;   // what is playing: { track, source, gain, startedAt }
+  let pending = null;    // an edit waiting for the next cycle: same shape, plus activeAt
   let playing = false;
-  let startedAt = 0;    // the audio clock's time when position 0 would have been
-  let heldAt = 0;       // where we are while paused
+  let heldAt = 0;        // where playback is while stopped, in cycles
 
   // Browsers refuse to make sound until the person has clicked or tapped
   // something, so the AudioContext is created on the first press of Play
@@ -33,23 +62,6 @@ export function createPlayer() {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
     }
     return ctx;
-  }
-
-  const duration = () => (audio === null ? 0 : audio.samples.length / audio.sampleRate);
-
-  function position() {
-    if (!playing) return heldAt;
-    // The audio clock only ever counts up, so wrap it round the loop length.
-    return (ctx.currentTime - startedAt) % duration();
-  }
-
-  // Hand over new audio: a Float32Array of samples at `sampleRate`. Playback
-  // stops; the caller restarts it if it wants to.
-  function load(samples, sampleRate) {
-    stop();
-    heldAt = 0;
-    audio = { samples, sampleRate };
-    buffer = null;  // made on the next play()
   }
 
   // The iPhone silent-switch workaround. Silent mode mutes web audio, but not
@@ -69,11 +81,97 @@ export function createPlayer() {
     silence.play().catch(() => {});
   }
 
+  // Make a track's audio ready to play, once.
+  function bufferOf(track) {
+    if (!track.buffer) {
+      track.buffer = ctx.createBuffer(1, track.samples.length, track.sampleRate);
+      track.buffer.copyToChannel(track.samples, 0);
+    }
+    return track.buffer;
+  }
+
+  // Start a track playing at audio-clock time `at`, from cycle `fromCycle`.
+  // Each track gets its own volume control (a GainNode), so one can fade out
+  // while the next comes in.
+  function startTrack(track, at, fromCycle) {
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    const source = ctx.createBufferSource();
+    source.buffer = bufferOf(track);
+    source.loop = true;
+    source.connect(gain);
+    const offset = fromCycle * track.cycle;
+    source.start(at, offset);
+    // Once stopped, unplug it so it can be tidied away.
+    source.onended = () => { source.disconnect(); gain.disconnect(); };
+    return { track, source, gain, startedAt: at - offset };
+  }
+
+  // If a waiting edit's moment has come, it is now what is sounding.
+  function promote() {
+    if (pending !== null && ctx.currentTime >= pending.activeAt) {
+      sounding = pending;
+      pending = null;
+    }
+  }
+
+  // Where playback is, in cycles, counted in whatever is actually sounding.
+  function cyclePosition() {
+    if (!playing) return heldAt;
+    promote();
+    const { track, startedAt } = sounding;
+    const seconds = (ctx.currentTime - startedAt) % (track.cycle * track.loops);
+    return Math.max(0, seconds) / track.cycle;
+  }
+
+  // Hand over the audio of a newly opened piece. Playback stops and goes back
+  // to the start; the caller restarts it if it wants to.
+  function load(samples, sampleRate, { cycle, loops }) {
+    stop();
+    heldAt = 0;
+    latest = { samples, sampleRate, cycle, loops };
+  }
+
+  // Hand over the audio of an EDITED piece. While playing, it comes in at
+  // the next cycle boundary, carrying on the cycle count; while stopped, it
+  // simply replaces the old audio at the same place in the cycle.
+  function swap(samples, sampleRate, { cycle, loops }) {
+    const next = { samples, sampleRate, cycle, loops };
+    if (!playing) {
+      latest = next;
+      heldAt = (Math.floor(heldAt) % loops) + (heldAt % 1);
+      return;
+    }
+    promote();
+    latest = next;
+    // A newer edit replaces one still waiting.
+    if (pending !== null) {
+      pending.source.onended = null;
+      pending.source.stop();
+      pending.source.disconnect();
+      pending.gain.disconnect();
+      pending = null;
+    }
+    const now = ctx.currentTime;
+    const { wait, startCycle } = planSwap(cyclePosition(), sounding.track, next);
+    const at = now + wait;
+    // The old version plays at full volume up to the boundary, then fades.
+    // Earlier fades planned for it are cancelled first.
+    const volume = sounding.gain.gain;
+    volume.cancelScheduledValues(now);
+    volume.setValueAtTime(1, now);
+    volume.setValueAtTime(1, at);
+    volume.linearRampToValueAtTime(0, at + FADE);
+    // Calling stop() again replaces an earlier stop time.
+    sounding.source.stop(at + FADE + 0.01);
+    pending = { ...startTrack(next, at, startCycle), activeAt: at };
+  }
+
   let starting = false;  // true while play() waits for the audio to wake
 
   async function play() {
     // Two quick taps must not start the sound twice.
-    if (audio === null || playing || starting) return;
+    if (latest === null || playing || starting) return;
     starting = true;
     // Both of these must happen straight away, inside the tap itself: iPhones
     // only allow sound to start during the tap, not after waiting for anything.
@@ -83,37 +181,43 @@ export function createPlayer() {
     } finally {
       starting = false;
     }
-    if (buffer === null) {
-      buffer = ctx.createBuffer(1, audio.samples.length, audio.sampleRate);
-      buffer.copyToChannel(audio.samples, 0);
-    }
-    source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(ctx.destination);
-    source.start(0, heldAt);
-    startedAt = ctx.currentTime - heldAt;
+    const from = (Math.floor(heldAt) % latest.loops) + (heldAt % 1);
+    sounding = startTrack(latest, ctx.currentTime, from);
+    pending = null;
     playing = true;
   }
 
   function stop() {
     if (!playing) return;
-    heldAt = position();
-    source.stop();
-    source.disconnect();
-    source = null;
+    heldAt = cyclePosition();
+    for (const t of [sounding, pending]) {
+      if (t === null) continue;
+      t.source.stop();
+    }
+    sounding = pending = null;
     playing = false;
     silence?.pause();  // ?. -- only if it was ever made
   }
 
-  // Jump to time t, carrying on playing if we were.
-  function seek(t) {
+  // Jump to a position (in cycles), carrying on playing if we were.
+  function seek(cycles) {
     const wasPlaying = playing;
     stop();
+    const loops = latest?.loops ?? 1;
     // % in JavaScript can return a negative number, so add the length on.
-    heldAt = duration() === 0 ? 0 : ((t % duration()) + duration()) % duration();
+    heldAt = ((cycles % loops) + loops) % loops;
     if (wasPlaying) play();
   }
 
-  return { load, play, stop, seek, position, duration, isPlaying: () => playing };
+  return {
+    load,
+    swap,
+    play,
+    stop,
+    seek,
+    cyclePosition,
+    isPlaying: () => playing,
+    // True while an edit is waiting for the next cycle to come in.
+    isSwapPending: () => pending !== null && ctx !== null && ctx.currentTime < pending.activeAt,
+  };
 }

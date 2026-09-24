@@ -138,7 +138,71 @@
   .together.on { stroke-opacity: .9; stroke-width: 2.5; }
 
   .playhead { stroke: var(--ink); stroke-width: 2; }
-  .stage { cursor: pointer; }
+  /* Taps on the drawing: a beat switches it off or on; the strip along the
+     top jumps playback there. Only those parts look tappable. */
+  .stage [data-beat] { cursor: pointer; }
+  .ruler { fill: var(--row); cursor: pointer; }
+  .ruler:hover { fill: var(--grid); }
+  .cycle-label { pointer-events: none; }
+  /* A layer that cannot be heard (muted, or another layer is soloed) is
+     still drawn, faded, and its name says why. */
+  .silent .band, .silent .mark, .silent .rest-glyph { opacity: .3; }
+  .state { fill: var(--muted); font-size: 12.5px; font-weight: 500; }
+  /* Every place the selected sequence step lands. */
+  .band.picked { stroke: var(--ink-2); stroke-width: 1.5; stroke-dasharray: none; }
+  .mark.picked circle { stroke: var(--ink); stroke-width: 3; }
+  .hit.picked line { stroke-width: 5; }
+  .rest-glyph.picked { fill: var(--ink); }
+  /* On a narrow screen the drawing keeps a readable size and scrolls
+     sideways inside its frame, rather than shrinking to nothing. */
+  @media (max-width: 700px) {
+    figure { overflow-x: auto; }
+    figure svg { min-width: 760px; }
+  }
+
+  /* --- The editor ----------------------------------------------------------- */
+  .editor { margin-top: 18px; display: grid; gap: 10px; }
+  .editor .bar { margin: 0; }
+  .label { color: var(--ink-2); font-size: 13px; margin-right: 4px; }
+  .unit { color: var(--ink-2); margin-left: 3px; }
+  .field { display: inline-flex; align-items: center; gap: 4px; }
+  .stepper { display: inline-flex; align-items: center; gap: 4px; }
+  .stepper button { min-width: 36px; padding: 6px 8px; }
+  .value { font-variant-numeric: tabular-nums; min-width: 2.4em; text-align: center; }
+  input[type="number"], input[type="text"] {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--bar); border-radius: 8px; padding: 6px 8px; min-height: 36px;
+  }
+  input.short { width: 5.5em; }
+  .editor select { max-width: 11em; }
+  input[type="range"] { width: 120px; accent-color: var(--c, var(--ink-2)); }
+  .card {
+    background: var(--surface); border-radius: 12px; padding: 10px 12px;
+    border-left: 6px solid var(--c); display: grid; gap: 8px;
+  }
+  .card.silent { opacity: .65; }
+  .card-head, .steps, .keypad { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .card .swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
+  .switches { display: inline-flex; gap: 6px; }
+  .remove { margin-left: auto; }
+  .toggle { min-width: 40px; font-weight: 700; }
+  .toggle[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .remove { color: var(--error); }
+  /* One tile per step of the sequence. */
+  .tile {
+    min-width: 40px; padding: 6px 8px; font-weight: 650; font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--c) 18%, var(--surface));
+  }
+  .tile.rest { background: var(--surface); color: var(--muted); border-style: dashed; }
+  .tile.selected { outline: 3px solid var(--ink); outline-offset: 1px; }
+  .grow { min-width: 36px; padding: 6px 8px; }
+  .sequence-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  input.sequence { width: 13em; font-family: ui-monospace, Menlo, monospace; }
+  .field-error { color: var(--error); font-size: 13px; }
+  .keypad { padding: 8px; border-radius: 10px; background: var(--row); }
+  .keypad button { min-width: 44px; }
+  .keypad .on { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .pending { color: var(--warn); font-size: 13px; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 2px 0; color: var(--ink-2); font-size: 13.5px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -165,10 +229,11 @@
 <div class="bar">
   <button id="play" type="button">Play</button>
   <span class="clock" id="clock"></span>
+  <span class="pending" id="pending" hidden>↻ change comes in at the next cycle</span>
   <button id="prev" type="button" aria-label="Earlier cycles">&larr;</button>
   <span class="window" id="window"></span>
   <button id="next" type="button" aria-label="Later cycles">&rarr;</button>
-  <span class="hint" id="hint">Space plays and pauses · click the grid to jump · arrow keys change page</span>
+  <span class="hint" id="hint">Tap a beat to switch it off or on · tap the strip along the top to jump · space plays</span>
 </div>
 
 <!-- Warnings and errors appear here. role="status" makes screen readers
@@ -188,6 +253,9 @@
   <span><svg viewBox="0 0 22 16"><rect x="2" y="1" width="18" height="14" rx="3" fill="url(#hatch)" stroke="var(--muted)" stroke-opacity=".5"/></svg>beat switched off — same place every cycle</span>
   <span><svg viewBox="0 0 22 16"><line x1="11" y1="1" x2="11" y2="15" stroke="var(--ink-2)" stroke-width="2"/></svg>layers sounding together</span>
 </div>
+
+<!-- The editing controls, built by editor.js. -->
+<section class="editor" id="editor" aria-label="Edit the piece"></section>
 
 <details>
   <summary>The grid as text</summary>

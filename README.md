@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 35 checks, should all pass
+npm test                      # 59 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -52,7 +52,32 @@ A piece is a short JSON file, one layer per line:
 }
 ```
 
-Editing a piece in the page itself is the next phase.
+## Editing
+
+Everything is edited in the page, and you hear each change straight away.
+While a piece is playing, a change comes in at the start of the next cycle,
+so the groove never stops.
+
+- **Tap a beat** in the drawing to switch it off, or back on. It is then
+  silent in every cycle (`active`).
+- **Tap the strip along the top** of the drawing to jump there.
+- **Under the drawing**, one card per layer: sample, beats, semitones or
+  scale degrees, scale, root, gain, **M**ute, **S**olo, and ✕ to remove it.
+  Above the cards: cycle length, loops, the piece's scale and root, and
+  **+ Add layer**.
+- **The step strip** shows the layer's sequence, one tile per step. Tap a
+  tile to choose it -- every place that step lands lights up in the drawing,
+  which is the clearest way to see a sequence phase against its beats --
+  then tap a key to change it, or **rest**. **+** and **−** make the
+  sequence longer or shorter. The text box beside it holds the same
+  sequence for typing or pasting.
+- **Undo / Redo**, also ⌘Z / Ctrl+Z.
+- A change that breaks a rule (a sequence of nothing but rests, say) is
+  refused with a message saying why, and the last good version keeps
+  playing.
+- The piece is kept in the browser between visits, so a reload does not lose
+  it. That is a convenience, not a save: **Save piece** or **Save page** to
+  keep something.
 
 ## Glossary
 
@@ -149,7 +174,9 @@ web/
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
     fingerprint.js   a short hash of the audio, to compare devices
-    main.js          wiring it all to the page's buttons
+    edit.js          every change the editor can make: spec in, new spec out
+    editor.js        the editing panel under the drawing
+    main.js          the one piece of state, and wiring it all together
   page.html          the page template: layout and colours
   build.js           stitches it all into one file: dist/randaw.html
   examples/          the six example pieces
@@ -200,19 +227,20 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 ## Where things stand
 
-Phases 1–10 are done: N layers, cycle-based tempo, the schedule/audio split,
+Phases 1–11 are done: N layers, cycle-based tempo, the schedule/audio split,
 beat skipping, scales, rests, the spec/Piece split, JSON export, a
-visualiser that plays in time with its drawing — and the whole engine moved
-into one self-contained web page that runs on a laptop or an iPad.
+visualiser that plays in time with its drawing, the whole engine in one
+self-contained web page that runs on a laptop, iPad or phone — and live
+editing in that page, with mute, solo and undo.
 
-Next up is live editing (11): change the piece in the page and hear it.
-Sections, drift, effects and MIDI follow. See `PHASES.md`.
+Next up is sections (12): variations across cycles. Drift, effects and MIDI
+follow. See `PHASES.md`.
 
 **Things worth knowing before picking up:**
 
-1. **The page has only been tested in Chromium.** Safari on the iPad has to
-   be tried on the device. The audio fingerprint under "The grid as text"
-   should read the same on every device for the same piece.
+1. **The page is tested in Chromium; Safari only by hand.** It has played on
+   an iPhone. The audio fingerprint under "The grid as text" should read the
+   same on every device for the same piece.
 2. **Rest behaviour is under question** — see Open questions at the top of
    `NOTES.md`. The `rests` example is the quickest way in.
 3. **Sections is top of the backlog.** It is probably the largest musical gap.
@@ -231,9 +259,16 @@ Sections, drift, effects and MIDI follow. See `PHASES.md`.
   examples and 600 random pieces were recorded in `test/fixtures/`, and the
   JavaScript engine must match them exactly: same verdict, same grid,
   byte-identical WAV.
+- **edit** — every change the editor can make, checked without a browser.
 - **page** — builds the page and opens it in headless Chromium: it must load
   without error, draw every note, and render the same audio fingerprint as
-  Node. Skipped if no Chromium is installed.
+  Node.
+- **editing** — drives the editor as a person would (taps a beat, presses
+  M, picks a step and a key, types a sequence, undoes, reloads, edits while
+  playing) and checks the page's audio against the same edit made in Node.
+
+The browser checks drive Chrome through its debugging protocol
+(`test/browser.js`, no library) and are skipped if no Chromium is installed.
 
 The habit that has caught the most: compare results **byte for byte**, not
 "close enough". It proved the schedule/audio split, the loop rewrite, that

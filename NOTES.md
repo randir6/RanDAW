@@ -43,11 +43,10 @@ the two versions made identical files; it is slightly odd (round to 32 bits,
 keep the top 16) and could be simplified once the Python version is retired,
 at the cost of changing the last bit of some samples.
 
-### The drawing is small on a phone held upright
-The page fits a phone's width, but four cycles of a busy piece in 360 pixels
-makes the labels too small to read. Fine on an iPad or a phone turned
-sideways. Worth fixing in the editor phase, probably with fewer cycles per
-page on narrow screens.
+### The drawing scrolls sideways on a phone held upright
+Since phase 11, narrow screens show two cycles per page and the drawing keeps
+a readable size, scrolling sideways inside its frame. Workable, not lovely;
+a layout made for portrait phones would be its own piece of work.
 
 ### Levels are set by hand
 Per-layer `gain=` with no auto-normalization, chosen deliberately for control.
@@ -88,8 +87,9 @@ and compare.
 **You can see it rather than work it out.** Open the page and pick the
 `rests` example: the rest marks wander across the pluck row (7 steps over 5
 beats) and the kick row (6 over 8), but stay put on the bell's (3 over 3).
-Still no behaviour changed. (Live editing, phase 11, will make trying
-variations quick.)
+Still no behaviour changed. Since phase 11, tapping a step in a layer's step
+strip outlines every place that step lands, and edits are heard at the next
+cycle -- so trying variations is now quick.
 
 Talked through since: rests and switched-off beats sound the same on any one
 beat and are the same thing when the sequence is as long as the beat count.
@@ -304,6 +304,26 @@ Design notes from thinking it through, so the work does not start cold:
   code containing the text that would end its script block.
 - **No dependencies, still.** Node runs the checks with its built-in test
   runner; `package.json` lists no packages.
-- **Headless Chrome will not go narrower than 500 pixels**, so a "phone"
-  screenshot at 390 is a cropped 500-pixel page. Check phone layouts inside
-  a 390-pixel iframe instead.
+- **Headless Chrome's window will not go narrower than 500 pixels**, so a
+  "phone" screenshot taken with `--window-size=390,…` is a cropped 500-pixel
+  page. `test/browser.js` sets the true size through the debugging protocol
+  instead (its `screenshot({ width: 390 })`).
+
+- **Every edit is a plain function, spec in, new spec out** (`edit.js`). The
+  page runs each result through `buildPiece`, so the rules still live in one
+  place, and an edit that breaks one is refused with the engine's message
+  while the last good version keeps playing. Undo is a list of old specs.
+- **The editor panel is rebuilt from the piece after every change**, rather
+  than updated piece by piece, so it can never disagree with the piece.
+- **Edits come in at the next cycle, counted in cycles.** The player keeps
+  its position as a cycle count, not seconds, because an edit can change the
+  cycle length; the new version starts on the downbeat of the cycle playback
+  was about to reach, and the old one fades over 15 ms.
+- **Mute and solo are saved in the piece**, as a DAW keeps them. Solo wins
+  over mute. Silent layers stay drawn, faded, with their name saying why, and
+  are left out of the WAV and of "sounding together".
+- **The piece is kept in the browser's storage** between visits: a
+  convenience against reloads, not a save. Safari can clear it.
+- **Test the page by driving Chrome, not by dumping it.** `--dump-dom` runs on
+  a simulated clock that races ahead of real work; `test/browser.js` talks to
+  Chrome over its debugging protocol and waits for real conditions.

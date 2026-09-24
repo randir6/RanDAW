@@ -85,6 +85,12 @@ const state = {
 };
 
 const player = createPlayer();
+
+// Sounds made while rendering, kept from one edit to the next (see
+// renderAudio). Each new gain or pitch adds one, so it is emptied now and then
+// rather than allowed to grow for ever; everything in it can be remade.
+const voices = new Map();
+const MAX_VOICES = 300;
 let view = null;  // the drawing, or null when the piece has too many layers
 
 // Work out everything about a spec and make its sound -- or say why not.
@@ -105,7 +111,8 @@ function make(spec, name) {
   }
   const derived = pieceToDerived(piece);
   const events = schedule(piece.layers, piece.loops, { audible: piece.audible });
-  const { mix, peak } = finishMix(renderAudio(events, { ...piece, library }));
+  if (voices.size > MAX_VOICES) voices.clear();
+  const { mix, peak } = finishMix(renderAudio(events, { ...piece, library, cache: voices }));
   const notes = [...piece.warnings];
   if (peak > 1) {
     notes.push(`the mix peaked at ${peak.toFixed(2)} and was clipped, which distorts -- ` +

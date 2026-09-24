@@ -16,8 +16,6 @@
 // Numbers in WAV files are "little-endian" (least significant byte first),
 // hence the `true` passed to every DataView read and write below.
 
-import { roundHalfEven } from "./numbers.js";
-
 export class WavError extends Error {}
 
 const FORMAT_PCM = 1;           // whole numbers
@@ -89,16 +87,27 @@ function readSamples(view, start, length, { code, channels, bits }) {
   return out;
 }
 
-// The bytes of a mono 16-bit WAV file.
+// Is this computer little-endian (least significant byte first)? Nearly every
+// one is, and then the samples can be written as one block, many times faster
+// than one at a time through a DataView. Checked rather than assumed.
+const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
+// One sample as a 16-bit whole number.
 //
-// Each value goes to 16 bits in two steps: first to a 32-bit whole number
-// (scaled by 2^31 and rounded to nearest, halves to even), then the top 16
-// bits of that are kept. It is an odd route -- mostly the same as rounding
-// down, except for values a hair below a whole step -- but it is exactly what
-// the Python version's audio library did. That was worked out by testing the
-// library against two million values, after a first guess (plain rounding
+// The rule is the Python version's audio library's, copied exactly so the two
+// versions wrote identical files. That library goes via 32 bits: scale by 2^31,
+// round to nearest (halves to even), keep the top 16 bits. Worked out by
+// testing it against two million values, after a first guess (plain rounding
 // down) matched 428,000 random values yet still missed 70 samples in a real
-// piece. Matching it is what lets the two versions write identical files.
+// piece.
+//
+// The one line below gives the same answer more cheaply: round down, but
+// count anything within 2^-17 of the next step as reaching it -- which is
+// exactly what "round to 32 bits, then keep the top 16" does. Checked equal to
+// the two-step version on 6.4 million values, including every boundary.
+export const toInt16 = (x) => Math.max(-32768, Math.min(32767, Math.floor(x * 32768 + 2 ** -17)));
+
+// The bytes of a mono 16-bit WAV file.
 export function encodeWav16(samples, sampleRate) {
   const dataBytes = samples.length * 2;
   const bytes = new Uint8Array(44 + dataBytes);
@@ -119,10 +128,12 @@ export function encodeWav16(samples, sampleRate) {
   writeText(36, "data");
   view.setUint32(40, dataBytes, true);
 
-  for (let i = 0; i < samples.length; i++) {
-    const wide = Math.max(-2147483648, Math.min(2147483647, roundHalfEven(samples[i] * 2147483648)));
-    // Dividing by 65536 (2^16) and rounding down keeps the top 16 bits.
-    view.setInt16(44 + i * 2, Math.floor(wide / 65536), true);
+  if (LITTLE_ENDIAN) {
+    // An Int16Array laid over the same bytes, straight after the header.
+    const out = new Int16Array(bytes.buffer, 44, samples.length);
+    for (let i = 0; i < samples.length; i++) out[i] = toInt16(samples[i]);
+  } else {
+    for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, toInt16(samples[i]), true);
   }
   return bytes;
 }

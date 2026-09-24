@@ -99,9 +99,27 @@ export async function launch(chromium) {
       return Buffer.from(data, "base64");
     }
 
+    // Run `expression` under Chrome's sampling profiler and return the time
+    // spent in each function, largest first -- for finding what is slow.
+    async function profile(expression) {
+      await send("Profiler.enable", {}, sessionId);
+      await send("Profiler.setSamplingInterval", { interval: 100 }, sessionId);
+      await send("Profiler.start", {}, sessionId);
+      await evaluate(expression);
+      const { profile: p } = await send("Profiler.stop", {}, sessionId);
+      const perNode = new Map(p.nodes.map((n) => [n.id, n]));
+      const counts = new Map();
+      p.samples.forEach((id, i) => {
+        const f = perNode.get(id).callFrame;
+        const name = `${f.functionName || "(anonymous)"} ${f.url.split("/").pop()}:${f.lineNumber + 1}`;
+        counts.set(name, (counts.get(name) ?? 0) + (p.timeDeltas[i] ?? 0) / 1000);
+      });
+      return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    }
+
     const close = () => send("Target.closeTarget", { targetId });
     await waitFor("document.readyState === 'complete' && document.documentElement.dataset.ready === '1'");
-    return { evaluate, waitFor, screenshot, close };
+    return { evaluate, waitFor, screenshot, profile, close };
   }
 
   async function close() {

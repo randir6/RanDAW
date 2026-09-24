@@ -85,6 +85,10 @@ def piece_to_dict(piece: Piece, relative_to: Path | None = None) -> dict:
                 "scale": layer.scale,
                 "root": layer.root,
                 "sequence": ["-" if w is None else w for w in written],
+                # The same sequence as a display should print it: drums as x.
+                "sequence_labels": [
+                    _label(layer, step, percussive) for step in range(len(written))
+                ],
                 # Back to 1-based for anything a person reads.
                 "active": (
                     sorted(b + 1 for b in layer.active_beats)

@@ -17,6 +17,11 @@ two have to agree for a real reason.
 There is no test framework here (no pytest) -- just a check() function and
 plain Python. One fewer dependency, and nothing hidden.
 """
+import glob
+import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +37,7 @@ from polyrhythm.scales import SCALES, degree_to_semitones
 from polyrhythm.export import piece_to_dict
 from polyrhythm.schedule import STATUS_INACTIVE, STATUS_NOTE, STATUS_REST, grid, schedule
 from polyrhythm.spec import SpecError, read_spec
+from polyrhythm.visualise import _json_for_script_tag
 
 SR = 44100
 PULSE = 0.15
@@ -598,8 +604,6 @@ check("a negative number is not mistaken for the rest marker",
 # A spec is what the user wrote; a Piece is what it means. The spec has to
 # survive being written out and read back unchanged -- that is what will let
 # a GUI save a piece and still offer its scale for editing.
-import json
-
 for config_file in sorted((ROOT / "configs").glob("*.toml")):
     spec, _ = read_spec(str(config_file))
     check(f"spec round-trips through JSON unchanged: {config_file.name}",
@@ -738,6 +742,78 @@ check("an exported piece renders byte-identically when read back in",
       and np.array_equal(sf.read(tmp / "from_json.wav", dtype="float32")[0],
                          sf.read(tmp / "cfg.wav", dtype="float32")[0]),
       "sample paths rewritten so the JSON works from its own folder")
+
+# --- The visualiser -----------------------------------------------------------
+# The page is one self-contained file. These checks look at the file Python
+# writes; the browser check at the end looks at what a browser makes of it.
+vis_layers = ["--layer", f"3:0,-,7:{impulse}:gain=0.3",
+              "--layer", f"4:0:{impulse}:gain=0.3:active=1,3"]
+vis_page = tmp / "vis.html"
+r = run(*vis_layers, "--loops", "2", "--out", str(tmp / "vis.wav"), "--visualise", str(vis_page))
+page_text = vis_page.read_text() if vis_page.is_file() else ""
+# Any src= or href= pointing at the network would break the page offline.
+check("--visualise writes one self-contained page",
+      # The audio shows up as one enormous run of base64 letters and digits.
+      r.returncode == 0 and "{{" not in page_text
+      and re.search(r"[A-Za-z0-9+/]{100000,}", page_text)
+      and not re.search(r"""(src|href)\s*=\s*["']?https?:""", page_text),
+      f"{len(page_text) / 1e3:.0f} kB, audio and data embedded, nothing fetched")
+
+run(*vis_layers, "--loops", "2", "--out", str(tmp / "vis_plain.wav"))
+check("--visualise does not change the audio",
+      (tmp / "vis.wav").read_bytes() == (tmp / "vis_plain.wav").read_bytes())
+
+six = []
+for _ in range(6):
+    six += ["--layer", f"2:0:{impulse}:gain=0.1"]
+r = run(*six, "--loops", "1", "--visualise", str(tmp / "six.html"))
+check("more than five layers is refused by the visualiser, not truncated",
+      r.returncode == 2 and "at most 5 layers" in r.stderr and not (tmp / "six.html").exists())
+r = run(*six, "--loops", "1", "--out", str(tmp / "six.wav"))
+check("...while six layers still render as audio", r.returncode == 0)
+
+# A name like "</script>" inside the embedded data would end the <script>
+# block early. It must come out escaped, yet read back as the same text.
+hostile = {"name": "</script><b>&"}
+escaped = _json_for_script_tag(hostile)
+check("data embedded in the page cannot close its <script> block",
+      "<" not in escaped and ">" not in escaped and json.loads(escaped) == hostile)
+
+
+def find_chromium():
+    """A headless browser, if this machine has one. Optional: the check that
+    needs it is skipped rather than failed without one."""
+    if os.environ.get("CHROMIUM"):
+        return os.environ["CHROMIUM"]
+    found = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
+    return found[-1] if found else shutil.which("chromium") or shutil.which("chromium-browser")
+
+
+chromium = find_chromium()
+if chromium is None:
+    print("[SKIP] the page draws every note (no headless Chromium found; set CHROMIUM=path)")
+else:
+    # --dump-dom prints the page as it stands after its scripts have run, so the
+    # attributes the page sets on itself can be read back here. ?t=0 is a still
+    # frame, needing no sound card.
+    dom = subprocess.run(
+        [chromium, "--headless=new", "--no-sandbox", "--disable-gpu",
+         "--virtual-time-budget=4000", "--dump-dom", f"file://{vis_page}?t=0"],
+        capture_output=True, text=True, timeout=60,
+    ).stdout
+    window = re.search(r'data-window="(\d+)"', dom)
+    drawn = re.search(r'data-notes-drawn="(\d+)"', dom)
+    derived = piece_to_dict(build_piece({"loops": 2, "cycle_duration": 2.0, "layer": [
+        {"beats": 3, "notes": [0, "-", 7], "sample": str(impulse)},
+        {"beats": 4, "notes": [0], "sample": str(impulse), "active": [1, 3]},
+    ]}))["derived"]
+    if window:
+        expected = sum(1 for c in derived["cells"]
+                       if c["status"] == "note" and c["cycle"] <= int(window.group(1)))
+    check("the page loads in a browser without errors and draws every note",
+          'data-ready="1"' in dom and "data-error" not in dom and window and drawn
+          and int(drawn.group(1)) == expected,
+          f"{drawn.group(1) if drawn else '?'} notes drawn" if window else "page did not finish")
 
 print()
 if failures:

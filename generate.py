@@ -31,6 +31,13 @@ from polyrhythm.piece import DEFAULT_CYCLE_DURATION, build_piece
 from polyrhythm.render import render_audio
 from polyrhythm.schedule import schedule
 from polyrhythm.spec import SpecError, read_spec
+from polyrhythm.visualise import (
+    LARGE_FILE_BYTES,
+    VisualiseError,
+    check_visualisable,
+    wav_bytes,
+    write_html,
+)
 
 DEFAULT_MAX_DURATION = 120.0
 
@@ -109,6 +116,13 @@ def build_parser():
         metavar="FILE",
         help="Also write the piece as JSON: the spec (which --config reads back "
         "in) plus its timing and a grid of every beat, silent ones included.",
+    )
+    parser.add_argument(
+        "--visualise",
+        metavar="FILE",
+        help="Also write a self-contained HTML page showing the piece in step "
+        "notation, which plays the audio in time with the drawing. Open it in "
+        "any browser; nothing else is needed. Up to 5 layers.",
     )
     parser.add_argument(
         "--dump-schedule",
@@ -203,10 +217,18 @@ def main():
 
     # Something has to be produced. Audio only when something needs it -- a
     # JSON export on its own never has to render a note.
-    if out_path is None and args.export_json is None:
+    if out_path is None and args.export_json is None and args.visualise is None:
         parser.error(
-            "need --out (or --export-json), on the command line or in the config"
+            "need --out (or --export-json / --visualise), on the command line or in the config"
         )
+
+    # Checked before any rendering, so an over-large piece fails in a moment
+    # rather than after the audio has been built.
+    if args.visualise:
+        try:
+            check_visualisable(piece)
+        except VisualiseError as e:
+            parser.error(str(e))
 
     # The length limit is policy, so it lives here in the front end rather
     # than in build_piece: a GUI might sensibly choose differently.
@@ -228,7 +250,7 @@ def main():
             f"{sounding} sounding, {len(derived['coincidences'])} coincidences"
         )
 
-    if out_path is None:
+    if out_path is None and args.visualise is None:
         return
 
     # Decide what happens when. Cheap -- well under a millisecond.
@@ -274,14 +296,26 @@ def main():
         # values wrapping around into loud noise.
         mix = np.clip(mix, -1.0, 1.0)
 
-    # soundfile picks 16-bit PCM for .wav by default, which is what we want
-    # for samplers like Koala. See NOTES.md -- it's a library default we rely
-    # on rather than something this line states.
-    sf.write(out_path, mix, piece.sample_rate)
-    print(
-        f"wrote {out_path}: {len(mix)} samples ({len(mix) / piece.sample_rate:.2f}s, "
-        f"{piece.loops} x {piece.cycle_duration:.3f}s cycle, peak {min(peak, 1.0):.2f})"
-    )
+    if out_path is not None:
+        # soundfile picks 16-bit PCM for .wav by default, which is what we want
+        # for samplers like Koala. See NOTES.md -- it's a library default we
+        # rely on rather than something this line states.
+        sf.write(out_path, mix, piece.sample_rate)
+        print(
+            f"wrote {out_path}: {len(mix)} samples ({len(mix) / piece.sample_rate:.2f}s, "
+            f"{piece.loops} x {piece.cycle_duration:.3f}s cycle, peak {min(peak, 1.0):.2f})"
+        )
+
+    if args.visualise:
+        # Named after the config file, or "command line" for --layer pieces.
+        title = Path(args.config).stem if args.config else "command line"
+        size = write_html(piece, wav_bytes(mix, piece.sample_rate), args.visualise, title)
+        print(f"wrote {args.visualise}: {size / 1e6:.1f} MB, open it in a browser")
+        if size > LARGE_FILE_BYTES:
+            print(
+                f"warning: {size / 1e6:.0f} MB is large for one page -- "
+                f"fewer --loops would make it quicker to open"
+            )
 
 
 # True only when this file is run directly, False when it's imported by

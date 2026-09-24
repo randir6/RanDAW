@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 72 checks, should all pass
+npm test                      # 75 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -76,7 +76,9 @@ so the groove never stops.
   then tap a key to change it, or **rest**. **+** and **−** make the
   sequence longer or shorter. The text box beside it holds the same
   sequence for typing or pasting.
-- **Undo / Redo**, also ⌘Z / Ctrl+Z.
+- **Undo / Redo**, also ⌘Z / Ctrl+Z. **Escape** puts the step keypad away.
+- **A mix that clips** (too loud, so it distorts) says so, with a button to
+  turn every layer down by the same amount, just enough to fit.
 - A change that breaks a rule (a sequence of nothing but rests, say) is
   refused with a message saying why, and the last good version keeps
   playing.

@@ -100,6 +100,7 @@ test("editing: mute and solo change what sounds, and fade what does not", { skip
     assert.equal(await fingerprint(page), print(toggleMute(spec, 1)));
     assert.equal(await page.evaluate("document.querySelectorAll('#stage g.silent').length > 0"), true);
 
+    assert.match(await page.evaluate("document.getElementById('text-grid').textContent"), /snare.*\(silent\)/);
     await click(page, ".card .toggle", 2);  // M off again
     await click(page, ".card .toggle", 5);  // S on the third layer
     assert.equal(await fingerprint(page), print(toggleSolo(spec, 2)));

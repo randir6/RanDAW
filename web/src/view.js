@@ -312,7 +312,9 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
             .map((c) => (c.status === "note" ? c.label : c.status === "rest" ? "-" : "."));
           bars.push(beats.join(" "));
         }
-        lines.push(`  ${d.layers[i].name.padEnd(nameWidth)}| ${bars.join(" | ")} |`);
+        // Silent layers (muted, or silenced by a solo) say so, as the drawing does.
+        const silent = d.layers[i].audible === false ? "  (silent)" : "";
+        lines.push(`  ${d.layers[i].name.padEnd(nameWidth)}| ${bars.join(" | ")} |${silent}`);
       }
       lines.push("");
     }

@@ -315,6 +315,7 @@ function show() {
     selected: state.selected,
     history: { canUndo: state.history.length > 0, canRedo: state.future.length > 0 },
     name: state.name,
+    maxSeconds: MAX_SECONDS,
     actions: { edit, select, undo, redo, rename },
   });
 

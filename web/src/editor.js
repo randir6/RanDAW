@@ -67,8 +67,9 @@ const pretty = (name) => name.replaceAll("_", " ");
 //   selected    the selected sequence step, { layer, step }, or null
 //   history     { canUndo, canRedo }
 //   name        what the piece is called (used for saved files)
+//   maxSeconds  the longest piece the page allows
 //   actions     { edit(fn), select(layer, step), undo(), redo(), rename(name) }
-export function renderEditor({ container, spec, derived, samples, selected, history, name, actions }) {
+export function renderEditor({ container, spec, derived, samples, selected, history, name, maxSeconds, actions }) {
   const { edit, select } = actions;
   const pieceScale = spec.scale ?? null;
   // A piece-wide scale can only be removed if no degree layer relies on it.
@@ -123,7 +124,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     const clean = spec.loops % whole === 0;
     // The nearest whole number of repeats: rounding the loops up keeps at
     // least the length chosen; down only if up would not fit the limits.
-    const fits = (n) => n >= whole && n <= MAX_LOOPS && n * cycle <= 120;
+    const fits = (n) => n >= whole && n <= MAX_LOOPS && n * cycle <= maxSeconds;
     const up = Math.ceil(spec.loops / whole) * whole;
     const down = Math.floor(spec.loops / whole) * whole;
     const suggestion = fits(up) ? up : fits(down) ? down : null;

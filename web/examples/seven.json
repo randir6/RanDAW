@@ -1,0 +1,10 @@
+{
+  "cycle_duration": 2.8,
+  "loops": 6,
+  "layer": [
+    {"beats": 7, "notes": [0], "sample": "kick.wav", "gain": 0.7, "active": [1, 4, 6]},
+    {"beats": 7, "notes": [0], "sample": "snare.wav", "gain": 0.33, "active": [3]},
+    {"beats": 7, "notes": [0], "sample": "hat.wav", "gain": 0.18, "active": [2, 5, 7]},
+    {"beats": 4, "notes": [0, -4], "sample": "tom.wav", "gain": 0.3}
+  ]
+}

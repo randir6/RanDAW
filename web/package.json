@@ -1,0 +1,10 @@
+{
+  "name": "randaw",
+  "private": true,
+  "description": "Polyrhythmic loop generator. No dependencies: plain JavaScript, checked with Node's built-in test runner.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node build.js"
+  }
+}

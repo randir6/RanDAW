@@ -9,3 +9,6 @@ __pycache__/
 # Pages written by --visualise; each carries its audio, so they are large and
 # quick to regenerate.
 /visualisations/
+
+# The built page: made by `node web/build.js`, so never edited by hand.
+/web/dist/

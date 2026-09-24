@@ -36,9 +36,18 @@ settling before per-layer effects, since panning is an obvious per-layer
 parameter.
 
 ### Output is 16-bit PCM
-This is `soundfile`'s default for WAV rather than an explicit choice. It
-happens to be the right call for the downstream targets (Koala, Loopy), but it
-is a library default we are relying on, not a decision the code states.
+Now an explicit choice: `wav.js` writes 16-bit PCM itself (it was a library
+default in the Python version). Right for the downstream targets (Koala,
+Loopy). The rounding rule it uses is the Python library's, copied exactly so
+the two versions made identical files; it is slightly odd (round to 32 bits,
+keep the top 16) and could be simplified once the Python version is retired,
+at the cost of changing the last bit of some samples.
+
+### The drawing is small on a phone held upright
+The page fits a phone's width, but four cycles of a busy piece in 360 pixels
+makes the labels too small to read. Fine on an iPad or a phone turned
+sideways. Worth fixing in the editor phase, probably with fewer cycles per
+page on narrow screens.
 
 ### Levels are set by hand
 Per-layer `gain=` with no auto-normalization, chosen deliberately for control.
@@ -72,14 +81,21 @@ was built and it is what the checks assert, but it may not be the musically
 useful behaviour, or may not be the only one wanted.
 
 Next step is to play with examples and work out what it *should* do before
-changing anything. `configs/rests.toml` is the place to start — try making
+changing anything. The `rests` example is the place to start — try making
 the sequence exactly as long as the beat count, which pins the rest in place,
-and compare. `--dump-schedule` shows exactly where each rest falls.
+and compare.
 
-**Since phase 9 you can see it rather than work it out.** `python3 generate.py
---config configs/rests.toml --visualise rests.html` and open the page: the
-rest marks wander across the pluck row (7 steps over 5 beats) and the kick row
-(6 over 8), but stay put on the bell's (3 over 3). Still no behaviour changed.
+**You can see it rather than work it out.** Open the page and pick the
+`rests` example: the rest marks wander across the pluck row (7 steps over 5
+beats) and the kick row (6 over 8), but stay put on the bell's (3 over 3).
+Still no behaviour changed. (Live editing, phase 11, will make trying
+variations quick.)
+
+Talked through since: rests and switched-off beats sound the same on any one
+beat and are the same thing when the sequence is as long as the beat count.
+They differ only when the lengths differ -- a rest belongs to the melody and
+moves with it, a switched-off beat belongs to the rhythm and stays put. Both
+are useful; the hard part is making the difference obvious in an editor.
 
 Possible outcomes, none decided: current behaviour is right and just needs
 demonstrating better; rests should be fixed to a beat like `active` is; or
@@ -161,12 +177,15 @@ Design notes from thinking it through, so the work does not start cold:
   `visualise.py`, and rows are laid out from the layer count, so lifting it
   is a one-line change plus a look at whether a sixth row still fits a
   laptop screen. Needs a sixth palette colour, validated like the others.
-- **A beat column in `--dump-schedule`.** `Event` has carried `beat` since
-  phase 8, but the dump still prints only pulses.
+- **Share straight to AUM or Koala from the iPad.** The page downloads the
+  WAV; Safari's share sheet (`navigator.share` with a file) could send it to
+  another app directly. Needs trying on the device.
+- **Your own samples in the page.** A file picker, decoded by `wav.js`;
+  "Save page" would then carry them inside the shared file too.
 - **Rename `loops` to `cycles`.** They are the same unit, and having two
-  words for it is the one genuinely confusing bit of vocabulary. Not renamed
-  because every config and example uses `loops`; would want doing in one go,
-  with the old spelling accepted for a while.
+  words for it is the one genuinely confusing bit of vocabulary. Would want
+  doing in one go, with the old spelling accepted for a while -- saved pieces
+  use `loops`.
 - **BPM referenced to a named layer.** `--cycle-duration` is the honest
   control, but "put layer 2 at 120 bpm" is how a musician would ask.
 
@@ -266,3 +285,25 @@ Design notes from thinking it through, so the work does not start cold:
 - **Check screenshots by looking at them.** Headless Chromium wrote blank
   images while reporting success until given `--headless=new` and the
   render-wait flags.
+
+- **The engine lives in the page, in JavaScript** (phase 10), so the tool
+  runs on an iPad and a piece can be shared as one file. The reasoning and
+  the risks are in PHASES.md under "Re-planned again".
+- **Match the old version exactly, not approximately.** The port was held to
+  byte-identical output against recorded Python results, and that is what
+  found every real difference -- including one that changed 70 samples in
+  half a million by the smallest possible step.
+- **A sample in a piece is a name, not a path.** The page has a sample
+  library; a web page cannot reach into your folders.
+- **The page reads and writes WAV itself** rather than letting the browser
+  decode audio, because browsers resample differently and the same piece
+  must make the same file on every device.
+- **One file, built from modules.** Browsers will not load module files from
+  a page opened off the disk, so `build.js` stitches them into one. It
+  refuses code it does not understand rather than guessing, and refuses any
+  code containing the text that would end its script block.
+- **No dependencies, still.** Node runs the checks with its built-in test
+  runner; `package.json` lists no packages.
+- **Headless Chrome will not go narrower than 500 pixels**, so a "phone"
+  screenshot at 390 is a cropped 500-pixel page. Check phone layouts inside
+  a 390-pixel iframe instead.

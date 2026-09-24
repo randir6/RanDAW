@@ -366,78 +366,163 @@ Both were checked against the code rather than assumed.
 
 ---
 
-## Phase 10 — Live editing
+## Re-planned again: the page becomes the program
 
-**Goal.** `python3 serve.py`, open localhost, change something, hear it.
+Decided after phase 9. The GUI is the main way the tool gets used, not the
+command line, and it should run on an iPad as well as a laptop -- Koala,
+Loopy and AUM are all iPad apps. A Python server cannot realistically run on
+an iPad; a page with the engine inside it runs anywhere with a browser, and
+one file can be emailed.
 
-**Dependency.** None needed. Python's stdlib `http.server` is entirely
-adequate for one user on localhost, which sidesteps the web-framework
-question. Revisit only if it actually hurts.
+So the engine moved to JavaScript, as its own phase, before live editing.
+The risks and how each is handled were argued through before starting; the
+short version:
 
-**Flow.** Page POSTs a piece as JSON → `build_piece` → `schedule` +
-`render_audio` → respond with schedule JSON and a WAV. Renders measured at
-7–30 ms, so this is comfortably interactive without any real-time audio
-engine.
-
-**Controls.** Cycle duration, loops, and per layer: beats, gain, active
-beats, pitch sequence, scale, root.
-
-**Saving.** Initially show the equivalent TOML in a panel to copy out. That
-dodges the config-writing problem entirely — `tomllib` only reads — and
-defers the decision about whether to add a writer.
-
-**Open.** Whether the GUI edits config files directly or holds its own state
-and exports.
+- **The iPad's browser is the weakest target and cannot be tested from here.**
+  Test on the real device early and every phase.
+- **A rewrite introduces quiet bugs.** The Python engine was kept as the
+  answer key until the JavaScript matched it exactly.
+- **Browsers decode and resample audio differently.** The page reads WAV
+  files and mixes sound itself, so every device produces the same bytes.
+- **Module files do not load from a page opened off the disk.** Develop in
+  modules; a small build script stitches them into one file.
+- **Plain JavaScript can sprawl as the UI grows.** One state object, one
+  function that draws from it; revisit only if it hurts, and ask first.
+- **Hand-written config files lose their comments.** Accepted: the GUI takes
+  over editing, and pieces are saved as JSON.
+- **The dead end:** running inside AUM as a plugin, or sending it live MIDI,
+  needs native iOS code whichever language the engine is in.
 
 ---
 
-## Phase 11 — Sections (from the backlog)
+## Phase 10 — The engine in JavaScript — DONE
+
+**Goal.** Everything the Python version does, in one self-contained page:
+open it, pick a piece, play it, download the WAV.
+
+**How it landed.** `web/src/` holds the engine as plain JavaScript modules,
+one per Python module and commented to the same standard. `web/build.js`
+stitches them, the six built-in samples and the example pieces into
+`web/dist/randaw.html` -- one 337 kB file that works offline and needs
+nothing installed. (The phase 9 pages were 2 MB each, because they carried
+their audio; this one carries the samples and makes the audio itself.)
+
+The page opens any of the examples or a saved JSON piece, and can download
+the WAV, save the piece as JSON, or **save a copy of itself** with the
+current piece inside -- the one file you can email.
+
+**The answer key.** `web/test/make_fixtures.py` ran the Python engine over
+the six examples and 600 random pieces (about a third deliberately broken in
+one of 61 ways) and recorded the answers. The JavaScript engine matches all
+of them exactly: the same verdict on every piece, the same grid number for
+number, and a **byte-identical WAV** for every one of the 379 that render.
+The browser page makes the same bytes again, checked in headless Chromium
+by an audio fingerprint the page shows under "The grid as text".
+
+**What a straight translation got wrong**, each found by the answer key:
+
+- **Remainders of negative numbers.** Python's `-1 % 7` is 6, JavaScript's
+  is -1. Degrees below 1 depend on the Python behaviour.
+- **Rounding halves.** Python rounds 2.5 to 2 (to even), JavaScript to 3.
+  This affects the tempo maths and the six-decimal values in the grid.
+- **Names every object inherits.** In JavaScript, `"toString" in SCALES` is
+  true; a scale called toString must still be refused.
+- **How the audio library wrote 16-bit samples.** A first guess (scale and
+  round down) matched 428,000 random test values but still left 70 samples
+  one step out in a real piece. The true rule -- round to 32 bits, keep the
+  top 16 -- was found by probing the library at the boundaries, and then
+  matched two million values exactly.
+
+The checks were themselves checked: seven bugs planted on purpose (each of
+the above undone, plus a pinned rest and unsorted events) were each caught.
+
+**Also settled.**
+
+- `sample` in a piece is now a *name* from the page's sample library, not a
+  file path -- a web page cannot reach into folders on your disk.
+- `out` and `max_duration` are no longer piece settings. Where the file goes
+  is the browser's business; the length limit (120 s) is the page's policy.
+- The Python version is frozen: kept only until you have tried the page on
+  your own devices, then retired. `qa_check.py` still passes against it.
+
+---
+
+## Phase 11 — Live editing
+
+**Goal.** Change the piece in the page and hear the change.
+
+**Settled already.**
+
+- **Edits land on the next cycle boundary.** The loop keeps playing and the
+  new version comes in on the next downbeat, like a sampler -- restarting on
+  every change would break the groove.
+- **Samples: a menu of the built-in set.** Adding your own comes later (it
+  needs the file picker, and the shared page would carry them).
+- **Clicking a beat toggles `active`** -- silence this beat, every cycle,
+  which is unambiguous. Rests are typed into the sequence, because whether a
+  click in cycle 3 should also move silences in other cycles is exactly the
+  open question about rests.
+- **Adding and removing layers** is in.
+- **Saving** is already done: Save piece and Save page.
+
+**First step.** Retire the Python version, once the page has been tried on
+the iPad and laptop.
+
+**Open.** How rests and switched-off beats should *look* different enough in
+an editor that nobody confuses them. Both are wanted.
+
+---
+
+## Phase 12 — Sections (from the backlog)
 
 Variations across cycles: same polyrhythmic base, different active beats,
 scale or notes per bar. Design notes are in NOTES.md.
 
 **Why after the GUI.** It is the largest musical gap, but it is also the
-hardest thing to design blind, and a working visualiser makes "what should
-four bars of variation look like" a question you can answer by looking. Note
-that phase 7 may make `Piece` section-shaped in advance so this is additive.
+hardest thing to design blind, and a working editor makes "what should four
+bars of variation look like" a question you can answer by looking.
 
 ---
 
-## Phase 12 — Drift (arc item 3)
+## Phase 13 — Drift (arc item 3)
 
 Layers that slowly fall out of phase rather than repeating exactly. This is
-where the fixed-length-versus-streaming fork has to be settled for real.
-Sections and drift are two answers to the same musical question, so decide
-whether both are wanted before building the second.
+where the fixed-length-versus-streaming fork has to be settled for real --
+and in a browser, live playback is available, which may settle it. Sections
+and drift are two answers to the same musical question, so decide whether
+both are wanted before building the second.
 
 ---
 
-## Phase 13 — Per-layer effects (arc item 4)
+## Phase 14 — Per-layer effects (arc item 4)
 
 Envelope first: every beat currently plays the whole sample flat, which is
 the bluntest thing about the sound. Then filtering, reverb.
 
-Independent of everything above, so it can be pulled forward at any point if
-the sound quality starts to annoy more than the feedback loop does. Effects
-need per-layer buffers, which phase 1 deliberately does not keep.
-
-**Open.** Reverb means a new dependency or a hand-rolled convolution.
+Browsers have filters, delay, reverb and compression built in, which the
+Python version would have needed libraries for. Using them for the WAV means
+rendering through the browser's own audio engine, which may not be
+byte-identical across browsers; decide then whether that matters.
 
 ---
 
-## Phase 14 — MIDI export
+## Phase 15 — MIDI export
 
-The schedule is most of the work, and pitch is already in semitones. `mido`
-or `pretty_midi`, a new dependency either way.
+The schedule is most of the work, and pitch is already in semitones. Writing
+a MIDI file is simple bytes, no library needed. Sending live MIDI from a web
+page does not work in Safari, so on the iPad this means files, not a live
+connection.
 
 ---
 
 ## Cross-cutting, not phased
 
+- **Test on the iPad.** The page is checked in Chromium on every change, but
+  Safari on iPad can only be checked on the device. The audio fingerprint
+  under "The grid as text" should match between devices.
+- **Hosting**, so the iPad can open the page from an address rather than a
+  file. Deliberately later.
 - **Real samples.** Everything so far is verified with synthetic test tones.
-- **Rest behaviour** is an open question — see NOTES.md. Phase 9 is the tool
-  for answering it.
+- **Rest behaviour** is an open question — see NOTES.md.
 - **Known limitations** — aliasing on large upward shifts, mono-only,
   hand-set levels — are recorded in NOTES.md with measurements.
-- **`qa_check.py` grows with each phase.** It is the largest file in the
-  project, which is the correct shape for something judged by ear.

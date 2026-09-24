@@ -182,6 +182,15 @@ test("JavaScript's inherited names are not mistaken for real ones", () => {
     /unknown sample toString/);
 });
 
+// --- How long a pattern takes to come round ------------------------------------------
+
+test("each layer, and the whole piece, knows how many cycles until it repeats", () => {
+  // rests: pluck 7 steps on 5 beats, bell 3 on 3, kick 6 on 8, hat 1 on 8.
+  const d = pieceToDerived(piece(JSON.parse(readFileSync(join(WEB, "examples", "rests.json"), "utf8"))));
+  assert.deepEqual(d.layers.map((l) => l.repeat_cycles), [7, 1, 3, 1]);
+  assert.equal(d.repeat_cycles, 21);
+});
+
 // --- Mute and solo -------------------------------------------------------------------
 
 const band = (extra = {}) => ({

@@ -22,9 +22,9 @@ const FIXTURES = `${HERE}/fixtures`;
 
 // Fields added to each layer after the Python version was retired. The
 // answer key cannot know about them, so they are set aside before comparing.
-const asRecorded = (derived) => ({
+const asRecorded = ({ repeat_cycles, ...derived }) => ({
   ...derived,
-  layers: derived.layers.map(({ mute, solo, audible, ...rest }) => rest),
+  layers: derived.layers.map(({ mute, solo, audible, repeat_cycles, ...rest }) => rest),
 });
 
 test("the canonical fingerprint agrees with Python's", () => {

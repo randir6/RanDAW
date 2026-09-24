@@ -225,6 +225,14 @@ test("editing: jumping while playing carries on playing from the new place", { s
     assert.equal(await page.evaluate("document.getElementById('window').textContent"), "cycles 5–8 of 8");
   }));
 
+test("editing: the piece says how long its pattern takes, and can loop on it exactly", { skip }, () =>
+  editing("rests", async (page) => {
+    assert.match(await page.evaluate("document.querySelector('.piece-controls .repeat').textContent"), /whole pattern: 21 cycles/);
+    await page.evaluate(`[...document.querySelectorAll(".piece-controls button")].find((b) => b.textContent === "Use 21 loops").click(), true`);
+    assert.equal(await fingerprint(page), print(setSetting(example("rests"), "loops", 21)));
+    assert.equal(await page.evaluate("document.querySelector('.piece-controls .repeat').className"), "repeat");
+  }));
+
 test("editing: a refused change leaves the controls showing the real piece", { skip }, () =>
   editing("rests", async (page) => {
     // Removing the piece's scale is refused: the rests layers need it.

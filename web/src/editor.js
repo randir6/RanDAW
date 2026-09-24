@@ -94,6 +94,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       }),
       h("span", { class: "unit" }, "s")),
     stepper("Loops", spec.loops, (n) => edit((s) => setSetting(s, "loops", n)), { min: 1, max: MAX_LOOPS }),
+    repeatNote(),
     menu("Scale", pieceScale ?? "",
       [["", scaleNeeded ? "(none — a layer needs one)" : "none"], ...SCALE_NAMES.map((n) => [n, pretty(n)])],
       (v) => edit((s) => setSetting(s, "scale", v || null))),
@@ -104,6 +105,23 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       onclick: () => edit((s) => addLayer(s, samples)),
     }, "+ Add layer"),
   );
+
+  // How long the whole pattern takes to come round, next to Loops. If the
+  // loops do not cover a whole number of repeats, the file will restart the
+  // pattern part-way through each time it loops -- so say so, and offer to fix
+  // it where the fix fits the page's limits.
+  function repeatNote() {
+    const whole = derived.repeat_cycles;
+    if (whole === 1) return null;
+    const clean = spec.loops % whole === 0;
+    const fits = whole <= MAX_LOOPS && whole * cycle <= 120;
+    return h("span", { class: `repeat${clean ? "" : " uneven"}` },
+      `whole pattern: ${whole} cycles`,
+      !clean && fits && h("button", {
+        type: "button", title: "So the file loops on a whole number of repeats",
+        onclick: () => edit((s) => setSetting(s, "loops", whole)),
+      }, `Use ${whole} loops`));
+  }
 
   const cards = spec.layer.map((layer, i) => layerCard(layer, i));
   container.replaceChildren(pieceRow, ...cards);
@@ -181,6 +199,8 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         onclick: () => { edit((s) => removeStep(s, i, at)); select(i, null); },
       }, "−"),
       sequenceField(seq, i),
+      h("span", { class: "repeat" },
+        info.repeat_cycles === 1 ? "same every cycle" : `comes round every ${info.repeat_cycles} cycles`),
     );
 
     // One button per beat, pressed when the beat is on: the same as tapping

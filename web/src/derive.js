@@ -20,7 +20,7 @@
 // The key names are snake_case because this is a data format, and it stayed
 // the same shape when the engine moved from Python to JavaScript.
 
-import { roundTo } from "./numbers.js";
+import { lcm, roundTo } from "./numbers.js";
 import { grid, STATUS_NOTE } from "./schedule.js";
 import { EXPORT_FORMAT, EXPORT_VERSION } from "./spec.js";
 
@@ -83,6 +83,13 @@ export function pieceToDerived(piece) {
       // Whether it sounds, once every layer's mute and solo are taken into
       // account. A silent layer is still drawn, faded.
       audible: piece.audible[index],
+      // How many cycles until this layer's pattern comes back round. The
+      // sequence restarts every (length) beats and the cycle every (beats)
+      // beats; both line up again after lcm(length, beats) beats. A sequence
+      // as long as the beat count repeats every cycle; 7 steps on 5 beats
+      // takes 7 cycles. (Switched-off beats are the same every cycle, so they
+      // never lengthen this.)
+      repeat_cycles: lcm(layer.notes.length, layer.beats) / layer.beats,
     };
   });
 
@@ -137,6 +144,9 @@ export function pieceToDerived(piece) {
     }));
 
   return {
+    // How many cycles until the whole piece comes back round: the point where
+    // every layer's pattern has repeated a whole number of times.
+    repeat_cycles: layersInfo.reduce((running, l) => lcm(running, l.repeat_cycles), 1),
     sample_rate: piece.sampleRate,
     loops: piece.loops,
     lcm: lcmBeats,

@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, formatSequence, scaleGains, insertStep, parseSequence, removeLayer, removeStep, setBeats,
-  setLayer, setSetting, setStep, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, formatSequence, insertPosition, MAX_OVER, parseSequence, removeLayer, removePosition,
+  scaleGains, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
 import { schedule } from "../src/schedule.js";
@@ -22,13 +22,15 @@ const rests = () => readJson(WEB, "examples", "rests.json");
 test("edits never change the piece they are given", () => {
   const spec = rests();
   const before = JSON.stringify(spec);
-  setSetting(spec, "loops", 2);
+  setSetting(spec, "bars", 2);
+  setSetting(spec, "tempo", 90);
+  setOver(spec, 0, 2);
   setLayer(spec, 0, "gain", 0.1);
   toggleBeat(spec, 3, 1);
   setBeats(spec, 3, 5);
-  setStep(spec, 0, 1, 3);
-  insertStep(spec, 0, 0);
-  removeStep(spec, 0, 0);
+  setPosition(spec, 0, 1, 3);
+  insertPosition(spec, 0, 0);
+  removePosition(spec, 0, 0);
   addLayer(spec, [...LIBRARY.keys()]);
   removeLayer(spec, 0);
   toggleMute(spec, 0);
@@ -37,37 +39,46 @@ test("edits never change the piece they are given", () => {
   assert.equal(JSON.stringify(spec), before);
 });
 
-test("setting the cycle length replaces a pulse duration", () => {
-  const next = setSetting({ pulse_duration: 0.1, loops: 1, layer: [] }, "cycle_duration", 2);
-  assert.deepEqual(next, { loops: 1, layer: [], cycle_duration: 2 });
+test("setting the tempo or the bars replaces the older words for them", () => {
+  assert.deepEqual(setSetting({ pulse_duration: 0.1, bars: 1, layer: [] }, "tempo", 90), { bars: 1, layer: [], tempo: 90 });
+  assert.deepEqual(setSetting({ cycle_duration: 2, tempo: 1, layer: [] }, "tempo", 90), { tempo: 90, layer: [] });
+  assert.deepEqual(setSetting({ loops: 3, layer: [] }, "bars", 4), { layer: [], bars: 4 });
   assert.equal(setSetting({ scale: "major", layer: [] }, "scale", null).scale, undefined);
 });
 
+test("a layer's span of bars stays within its limits, and 1 is written by leaving it out", () => {
+  const spec = { bars: 1, layer: [{ beats: 7, notes: [0], sample: "kick.wav" }] };
+  assert.equal(setOver(spec, 0, 2).layer[0].over, 2);
+  assert.equal(setOver(spec, 0, 99).layer[0].over, MAX_OVER);
+  assert.equal(Object.hasOwn(setOver(setOver(spec, 0, 2), 0, 1).layer[0], "over"), false);
+  assert.equal(Object.hasOwn(setOver(spec, 0, 0).layer[0], "over"), false, "never less than one bar");
+});
+
 test("switching a beat off and on again leaves the layer as it was", () => {
-  const spec = { loops: 1, layer: [{ beats: 4, notes: [0], sample: "kick.wav" }] };
+  const spec = { bars: 1, layer: [{ beats: 4, notes: [0], sample: "kick.wav" }] };
   const off = toggleBeat(spec, 0, 2);
   assert.deepEqual(off.layer[0].active, [1, 3, 4]);
   const on = toggleBeat(off, 0, 2);
   assert.equal(Object.hasOwn(on.layer[0], "active"), false, "all beats on is written as no `active` at all");
-  // The switched-off beat is silent in every cycle.
-  const p = builds({ ...off, loops: 3 });
-  assert.deepEqual(schedule(p.layers, 3).map((e) => e.beat % 4).filter((b) => b === 1), []);
+  // The switched-off beat is silent in every bar.
+  const p = builds({ ...off, bars: 3 });
+  assert.deepEqual(schedule(p).map((e) => e.beat).filter((b) => b === 1), []);
 });
 
 test("fewer beats drops switched-off beats past the new end", () => {
-  const spec = { loops: 1, layer: [{ beats: 8, notes: [0], sample: "hat.wav", active: [1, 4, 7] }] };
+  const spec = { bars: 1, layer: [{ beats: 8, notes: [0], sample: "hat.wav", active: [1, 4, 7] }] };
   assert.deepEqual(setBeats(spec, 0, 5).layer[0].active, [1, 4]);
   assert.equal(setBeats(spec, 0, 0).layer[0].beats, 1, "never fewer than one beat");
   assert.equal(setBeats(spec, 0, 999).layer[0].beats, 32);
 });
 
-test("steps are set, added and removed in the layer's own notation", () => {
+test("positions are set, added and removed in the layer's own notation", () => {
   const spec = rests();  // layer 0 is degrees [1, "-", 5, 4, "-", 2, 8]
-  assert.deepEqual(setStep(spec, 0, 1, 3).layer[0].degrees, [1, 3, 5, 4, "-", 2, 8]);
-  assert.deepEqual(insertStep(spec, 0, 2).layer[0].degrees, [1, "-", 5, 5, 4, "-", 2, 8]);
-  assert.deepEqual(removeStep(spec, 0, 0).layer[0].degrees, ["-", 5, 4, "-", 2, 8]);
+  assert.deepEqual(setPosition(spec, 0, 1, 3).layer[0].degrees, [1, 3, 5, 4, "-", 2, 8]);
+  assert.deepEqual(insertPosition(spec, 0, 2).layer[0].degrees, [1, "-", 5, 5, 4, "-", 2, 8]);
+  assert.deepEqual(removePosition(spec, 0, 0).layer[0].degrees, ["-", 5, 4, "-", 2, 8]);
   const one = { layer: [{ beats: 1, notes: [0], sample: "kick.wav" }] };
-  assert.deepEqual(removeStep(one, 0, 0).layer[0].notes, [0], "never an empty sequence");
+  assert.deepEqual(removePosition(one, 0, 0).layer[0].notes, [0], "never an empty sequence");
 });
 
 test("a sequence round-trips through the text field", () => {
@@ -87,26 +98,29 @@ test("degrees to notes keeps the sound exactly", () => {
 });
 
 test("notes to degrees snaps each pitch to the scale, and back again exactly", () => {
-  const spec = { loops: 1, scale: "major", layer: [{ beats: 4, notes: [0, 4, 7, 12, 1, "-"], sample: "pluck.wav" }] };
+  const spec = { bars: 1, scale: "major", layer: [{ beats: 4, notes: [0, 4, 7, 12, 1, "-"], sample: "pluck.wav" }] };
   const asDegrees = switchPitchKind(spec, 0, "degrees");
   // 1 semitone is not in C major: it snaps down to 0, degree 1.
   assert.deepEqual(asDegrees.layer[0].degrees, [1, 3, 5, 8, 1, "-"]);
   assert.deepEqual(switchPitchKind(asDegrees, 0, "notes").layer[0].notes, [0, 4, 7, 12, 0, "-"]);
   // With no scale anywhere, the layer gets one so its degrees mean something.
-  const bare = { loops: 1, layer: [{ beats: 1, notes: [0], sample: "kick.wav" }] };
+  const bare = { bars: 1, layer: [{ beats: 1, notes: [0], sample: "kick.wav" }] };
   assert.equal(switchPitchKind(bare, 0, "degrees").layer[0].scale, "major");
 });
 
 test("every example still builds after each kind of edit", () => {
   const names = [...LIBRARY.keys()];
-  for (const name of ["tresillo", "rests", "seven", "phase_study", "sparse_dub", "scales"]) {
+  for (const name of ["tresillo", "rests", "seven", "spans", "phase_study", "sparse_dub", "scales"]) {
     const spec = readJson(WEB, "examples", `${name}.json`);
     for (const [label, edit] of [
-      ["loops", (s) => setSetting(s, "loops", 2)],
-      ["cycle", (s) => setSetting(s, "cycle_duration", 1.7)],
+      ["bars", (s) => setSetting(s, "bars", 2)],
+      ["tempo", (s) => setSetting(s, "tempo", 97)],
+      ["base", (s) => setSetting(s, "base", 5)],
+      ["click", (s) => setSetting(s, "click", true)],
       ["beats", (s) => setBeats(s, 0, s.layer[0].beats + 1)],
+      ["over", (s) => setOver(s, 0, 3)],
       ["toggle", (s) => toggleBeat(s, 0, 1)],
-      ["insert", (s) => insertStep(s, 0, 0)],
+      ["insert", (s) => insertPosition(s, 0, 0)],
       ["add", (s) => addLayer(s, names)],
       ["mute", (s) => toggleMute(s, 0)],
       ["solo", (s) => toggleSolo(s, 1)],
@@ -134,6 +148,7 @@ test("turning every layer down keeps the balance and never overshoots", () => {
 });
 
 test("a new layer uses a sample not already in the piece", () => {
-  const spec = { loops: 1, layer: [{ beats: 3, notes: [0], sample: "bell.wav" }] };
+  const spec = { bars: 1, layer: [{ beats: 3, notes: [0], sample: "bell.wav" }] };
   assert.equal(addLayer(spec, ["bell.wav", "hat.wav"]).layer[1].sample, "hat.wav");
+  assert.equal(addLayer(spec, ["bell.wav", "click.wav", "hat.wav"]).layer[1].sample, "hat.wav", "not the click");
 });

@@ -21,7 +21,7 @@ export const REST = "-";
 // trace for free, and `instanceof LayerError` can pick it out.
 export class LayerError extends Error {}
 
-// Validate the pieces of a layer and build one.
+// Validate the parts of a layer and build one.
 //
 // The argument is a single object with named parts -- makeLayer({ beats: 3,
 // sample: "kick.wav", notes: [0] }) -- rather than a long list of positional
@@ -40,6 +40,7 @@ export class LayerError extends Error {}
 // arrives as null.
 export function makeLayer({
   beats,
+  over = 1,
   sample,
   notes = null,
   degrees = null,
@@ -51,6 +52,9 @@ export function makeLayer({
   solo = false,
 }) {
   if (beats < 1) throw new LayerError(`beat count must be >= 1, got ${beats}`);
+  // `over` is how many bars the layer's beats are spread across: 7 beats
+  // over 2 bars is a slower, longer 7 than 7 squeezed into one.
+  if (over < 1) throw new LayerError(`over must be at least 1 bar, got ${over}`);
 
   // Exactly one of the two. Compared with null rather than tested for
   // truth, so an explicitly empty list is caught below as empty rather than
@@ -105,6 +109,7 @@ export function makeLayer({
   // made, and code that tries to change one afterwards is a bug.
   return Object.freeze({
     beats,
+    over,
     notes: Object.freeze(notes),
     sample,
     gain,

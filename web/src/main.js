@@ -17,7 +17,7 @@ import { createPlayer } from "./player.js";
 import { finishMix, renderAudio } from "./render.js";
 import { schedule } from "./schedule.js";
 import { pageWithPiece } from "./share.js";
-import { formatSpec, readSpec, SpecError } from "./spec.js";
+import { formatSpec, readSpec, SpecError, upgradeSpec } from "./spec.js";
 import { createView, MAX_LAYERS, NARROWEST, WIDEST } from "./view.js";
 import { decodeWav, encodeWav16 } from "./wav.js";
 
@@ -36,7 +36,7 @@ const PRISTINE = "<!doctype html>\n" + document.documentElement.outerHTML;
 // How long a piece may be. A policy of this page, not a rule of the engine:
 // past a couple of minutes the file gets unwieldy to open and share.
 const MAX_SECONDS = 120;
-// How many steps back Undo can go.
+// How many changes back Undo can go.
 const HISTORY = 200;
 
 // Any error ends up as an attribute on the page, where the automated checks
@@ -88,7 +88,7 @@ const examples = readBlock("randaw-examples");  // [{ name, about, spec }]
 
 // Everything the page is showing comes from this one object. `spec` is the
 // piece as written; `history` and `future` are the specs Undo and Redo step
-// through; `selected` is the sequence step being edited, if any.
+// through; `selected` is the sequence position being edited, if any.
 const state = {
   name: null,
   spec: null,
@@ -121,7 +121,7 @@ function check(spec, name) {
   }
   if (piece.totalDuration > MAX_SECONDS) {
     say(`That would be ${piece.totalDuration.toFixed(1)} s long, over this page's limit of ` +
-      `${MAX_SECONDS} s. Use fewer loops or a shorter cycle.`, "error");
+      `${MAX_SECONDS} s. Use fewer bars or a faster tempo.`, "error");
     return null;
   }
   showingError = false;  // this change succeeded, so any earlier refusal is past
@@ -131,7 +131,7 @@ function check(spec, name) {
 // Make a checked piece's sound, and its WAV file. The slow part of an edit.
 function sound(made) {
   const { piece } = made;
-  const events = schedule(piece.layers, piece.loops, { audible: piece.audible });
+  const events = schedule(piece);
   if (voices.size > MAX_VOICES) voices.clear();
   const { mix, peak } = finishMix(renderAudio(events, { ...piece, library, cache: voices }));
   const wav = encodeWav16(mix, piece.sampleRate);
@@ -159,8 +159,11 @@ function notices(made) {
 
 // Open a piece afresh: an example, a file, or the one saved in this page.
 // Undo history starts again, and playback goes back to the start.
+//
+// A piece in the older words (cycle_duration, loops) is upgraded to tempo,
+// base and bars first, so the editor only ever meets today's words.
 function open(spec, name) {
-  const made = check(spec, name);
+  const made = check(upgradeSpec(spec), name);
   if (made === null) return false;
   cancelSound();
   sound(made);
@@ -174,7 +177,7 @@ function open(spec, name) {
 // Apply an edit: a function from edit.js, spec in, new spec out. If the result
 // breaks a rule, the message says which and nothing changes -- the last good
 // version keeps playing. Otherwise it becomes the piece, Undo can take it
-// back, and while playing it comes in at the next cycle.
+// back, and while playing it comes in at the start of the next bar.
 //
 // The screen changes straight away; the sound is made a moment later (see
 // soundSoon), so a slow phone never makes a tap feel ignored.
@@ -188,9 +191,9 @@ function commit(next, { record = true } = {}) {
   }
   state.spec = made.piece.spec;
   state.made = made;
-  // Keep the selected step only if it still exists.
+  // Keep the selected position only if it still exists.
   const s = state.selected;
-  if (s && !(state.spec.layer[s.layer] && s.step < sequenceOf(state.spec.layer[s.layer]).length)) {
+  if (s && !(state.spec.layer[s.layer] && s.position < sequenceOf(state.spec.layer[s.layer]).length)) {
     state.selected = null;
   }
   saveDraft(state.name, state.spec);
@@ -259,11 +262,14 @@ function redo() {
   }
 }
 
-// How long a cycle is and how many there are, which the player needs to know
-// where cycle boundaries fall.
+// How long a bar is and how many there are, which the player needs to know
+// where each bar starts.
 function timing() {
-  return { cycle: state.made.piece.cycleDuration, loops: state.made.piece.loops };
+  return { bar: state.made.piece.barDuration, bars: state.made.piece.bars };
 }
+
+// A tempo as a person would write it: 120, or 109.09 -- never 109.090909.
+const bpm = (tempo) => String(Number(tempo.toFixed(2)));
 
 // --- Showing it -------------------------------------------------------------------
 
@@ -274,9 +280,11 @@ function show() {
   const edited = state.history.length > 0;
   document.title = `${name} · RanDAW`;
   $("title").textContent = name;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   $("meta").textContent =
-    `${derived.loops} cycles × ${derived.cycle_duration.toFixed(2)} s = ${derived.total_duration.toFixed(2)} s` +
-    ` · ${derived.layers.length} layers · ${derived.lcm} pulses per cycle${edited ? " · edited" : ""}`;
+    `${plural(derived.bars, "bar")} · ${bpm(derived.tempo)} BPM, ${plural(derived.base, "beat")} per bar` +
+    ` · ${derived.total_duration.toFixed(2)} s · ${plural(derived.layers.length, "layer")}` +
+    `${edited ? " · edited" : ""}`;
 
   if (derived.layers.length > MAX_LAYERS) {
     // Refuse to draw rather than draw only some: a layer you can hear but not
@@ -289,12 +297,12 @@ function show() {
     $("figure").hidden = false;
     view = createView(derived, $("stage"), {
       onBeat: (layer, beat) => edit((s) => toggleBeat(s, layer, beat)),
-      onSeek: (cycles) => { player.seek(cycles); refresh(); },
-      // Narrow screens show fewer cycles at once, so each one is wider.
+      onSeek: (bars) => { player.seek(bars); refresh(); },
+      // Narrow screens show fewer bars at once, so each one is wider.
       maxPerPage: narrow() ? 2 : 4,
       width: drawingWidth(),
     });
-    if (state.selected) view.highlight(state.selected.layer, state.selected.step);
+    if (state.selected) view.highlight(state.selected.layer, state.selected.position);
     $("text-grid").textContent = view.textGrid();
   }
   $("prev").disabled = $("next").disabled = view === null || view.pages === 1;
@@ -331,17 +339,17 @@ function rename(text) {
   show();
 }
 
-// Choose a sequence step to edit (step null clears the choice).
-function select(layer, step) {
-  state.selected = step === null ? null : { layer, step };
+// Choose a sequence position to edit (position null clears the choice).
+function select(layer, position) {
+  state.selected = position === null ? null : { layer, position };
   show();
 }
 
 // Bring the drawing and the clock up to date with the player. The player
-// counts in cycles; this piece's cycle length turns that into seconds.
+// counts in bars; this piece's bar length turns that into seconds.
 function refresh() {
-  const { cycleDuration, loops, totalDuration } = state.made.piece;
-  const t = (player.cyclePosition() % loops) * cycleDuration;
+  const { barDuration, bars, totalDuration } = state.made.piece;
+  const t = (player.barPosition() % bars) * barDuration;
   if (view !== null) {
     view.show(t);
     $("window").textContent = view.pageLabel();
@@ -384,7 +392,7 @@ function changePage(delta) {
 }
 
 // Turning a phone round changes how much room the drawing has, and so how
-// many cycles fit on a page. Redraw when that crosses the line -- only then,
+// many bars fit on a page. Redraw when that crosses the line -- only then,
 // since a resize fires many times while it happens.
 const narrow = () => window.innerWidth < 700;
 
@@ -428,7 +436,7 @@ document.addEventListener("keydown", (e) => {
   }
   // Leave other keys alone while something like a button or menu has focus,
   // so space presses that button rather than doing two things at once.
-  // Escape puts away the step keypad, from anywhere.
+  // Escape puts away the position keypad, from anywhere.
   if (e.key === "Escape" && state.selected) {
     select(null, null);
     return;
@@ -516,7 +524,7 @@ if (asked) {
 if (params.has("t") && state.made) {
   const t = parseFloat(params.get("t"));
   if (!Number.isNaN(t)) {
-    player.seek(t / state.made.piece.cycleDuration);
+    player.seek(t / state.made.piece.barDuration);
     $("play").disabled = true;
     $("hint").textContent = `Still frame at ${t.toFixed(2)} s — remove ?t= from the address to play`;
     refresh();

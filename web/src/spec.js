@@ -3,14 +3,20 @@
 // A spec is a plain object, saved and loaded as JSON:
 //
 //   {
-//     "cycle_duration": 2.0,
-//     "loops": 8,
+//     "tempo": 120,        beats per minute, counting the BASE beat
+//     "base": 4,           beats per bar: the meter everything sits on
+//     "bars": 8,           how long the piece is, in bars
 //     "scale": "dorian",
 //     "layer": [
 //       { "beats": 8, "notes": [0, "-", 0], "sample": "kick.wav", "active": [1, 4, 7] },
-//       { "beats": 5, "degrees": [1, 3, 5], "sample": "pluck.wav", "gain": 0.4 }
+//       { "beats": 7, "over": 2, "degrees": [1, 3, 5], "sample": "pluck.wav", "gain": 0.4 }
 //     ]
 //   }
+//
+// The words, which README.md lists in full: the BASE sets the bar (4 beats
+// at 120 BPM makes a 2-second bar); every layer lays its own BEATS over a
+// number of bars ("7 over 2 bars"), 1 unless it says `over`; each layer's
+// SEQUENCE of notes and rests is read one position per beat.
 //
 // It keeps things the way you wrote them -- degrees rather than semitones,
 // beats counted from 1, rests as "-". That is deliberate: the spec is what
@@ -20,39 +26,50 @@
 // `sample` is a NAME, looked up in the page's sample library, not a path to a
 // file: a web page cannot reach into folders on your disk.
 //
-// Turning a spec into something playable is buildPiece()'s job, in piece.js.
-// This module checks what a spec says and builds layers from its entries.
+// OLDER PIECES said `cycle_duration` (seconds per bar) or `pulse_duration`,
+// and `loops` (the number of bars). Those still read, and still sound exactly
+// as they did -- the checks compare them against answers recorded long ago --
+// and upgradeSpec() below turns one into the current form.
 //
-// A note on names: the keys inside a spec keep Python-style snake_case
-// ("cycle_duration") because they are the saved file format, shared with
-// every piece already written. JavaScript's own names use camelCase.
+// A note on names: the keys inside a spec use snake_case, because they are
+// the saved file format. JavaScript's own names use camelCase.
 
 import { LayerError, makeLayer, REST } from "./layer.js";
+import { gcd, lcm, roundTo } from "./numbers.js";
 import { isScale, scaleNames } from "./scales.js";
 
-// Written into a saved piece so a file can say what it is. A version number
-// costs nothing now and means a future change of shape can be detected
-// rather than silently misread.
+// Written into a saved piece so a file can say what it is. Version 2 is the
+// tempo/base/bars vocabulary; version 1 files still read.
 export const EXPORT_FORMAT = "randaw-piece";
-export const EXPORT_VERSION = 1;
+export const EXPORT_VERSION = 2;
+const READABLE_VERSIONS = [1, 2];
+
+// The older names for timing, still understood when reading.
+export const LEGACY_KEYS = ["cycle_duration", "pulse_duration", "loops"];
 
 // Listing the permitted keys lets us reject typos. Without this, writing
-// "cycle_durations": 2.0 would be silently ignored and you would spend ten
-// minutes wondering why the tempo never changed.
+// "tempos": 120 would be silently ignored and you would spend ten minutes
+// wondering why the tempo never changed.
 export const TOP_LEVEL_KEYS = [
-  "cycle_duration", "pulse_duration", "loops", "sample_rate", "scale", "root", "layer",
+  "tempo", "base", "bars", "click", "sample_rate", "scale", "root", "layer", ...LEGACY_KEYS,
 ];
 export const LAYER_KEYS = [
-  "beats", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo",
+  "beats", "over", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo",
 ];
 
-// Settings a spec may carry, and the kind of number each must be.
+// Settings a spec may carry, and the kind of value each must be.
 const SETTING_KINDS = {
+  tempo: "number",
+  base: "whole number",
+  bars: "whole number",
+  sample_rate: "whole number",
   cycle_duration: "number",
   pulse_duration: "number",
   loops: "whole number",
-  sample_rate: "whole number",
 };
+
+// With no base given, a bar has four beats: the most common meter by far.
+export const DEFAULT_BASE = 4;
 
 // Anything wrong with what the user asked for, with a message meant for a
 // person to read. One error type for every part of the page to catch.
@@ -128,7 +145,7 @@ export function readSpec(text, name = "file") {
   if (!isPlainObject(data)) throw new SpecError(`${name}: expected a piece at the top level`);
 
   if (data.format === EXPORT_FORMAT) {
-    if (data.version !== EXPORT_VERSION) {
+    if (!READABLE_VERSIONS.includes(data.version)) {
       throw new SpecError(
         `${name}: written by a different version of this tool ` +
           `(format version ${shown(data.version)}, expected ${EXPORT_VERSION})`,
@@ -138,6 +155,41 @@ export function readSpec(text, name = "file") {
     if (!isPlainObject(data)) throw new SpecError(`${name}: export has no spec in it`);
   }
   return data;
+}
+
+// Turn an older piece (cycle_duration or pulse_duration, and loops) into the
+// current form (tempo, base, bars). The page does this when it opens one, so
+// the editor only ever meets today's words.
+//
+// The tempo is the BPM whose base beats fill the old bar length: a
+// cycle_duration of 2.2 s with 4 beats to the bar is 109.091 BPM. Rounded to three places, so the new piece can sound
+// a hair different -- a fraction of a millisecond per bar. Anything not
+// understood is left alone for buildPiece to explain.
+export function upgradeSpec(spec) {
+  if (!isPlainObject(spec) || !LEGACY_KEYS.some((key) => has(spec, key))) return spec;
+  const next = structuredClone(spec);
+  const base = isWhole(next.base) && next.base >= 1 ? next.base : DEFAULT_BASE;
+
+  let barSeconds = null;
+  if (isNumber(next.cycle_duration) && next.cycle_duration > 0) {
+    barSeconds = next.cycle_duration;
+  } else if (isNumber(next.pulse_duration) && next.pulse_duration > 0 && Array.isArray(next.layer)) {
+    // A pulse duration fixed the grid step, so the bar was that many pulses.
+    const layers = next.layer.filter((l) => isPlainObject(l) && isWhole(l.beats) && l.beats >= 1);
+    const pulses = layers.reduce((running, l) => lcm(running, l.beats / gcd(l.beats, isWhole(l.over) ? l.over : 1)), 1);
+    barSeconds = next.pulse_duration * pulses;
+  } else if (!has(next, "cycle_duration") && !has(next, "pulse_duration")) {
+    barSeconds = 2.0;  // the old default
+  }
+  if (barSeconds === null) return spec;  // cannot tell; let buildPiece explain
+
+  delete next.cycle_duration;
+  delete next.pulse_duration;
+  const upgraded = { tempo: roundTo((base * 60) / barSeconds, 3), base };
+  if (has(next, "loops")) upgraded.bars = next.loops;
+  delete next.loops;
+  // Keep the timing settings first, where a person reading the file looks.
+  return { ...upgraded, ...next, base };
 }
 
 // A spec as JSON text for saving: settings one per line, then each layer on
@@ -164,6 +216,9 @@ export function formatSpec(spec) {
 
 // Check the top level of a spec and return its settings. `source` is only
 // for error messages, so a person can tell where the mistake is.
+//
+// The returned `legacy` is true for a piece in the older words, which is
+// timed exactly as it always was (see buildPiece).
 export function checkSettings(spec, source) {
   if (!isPlainObject(spec)) throw new SpecError(`${source}: expected a table of settings`);
   rejectUnknownKeys(spec, TOP_LEVEL_KEYS, source, "setting(s)");
@@ -181,11 +236,22 @@ export function checkSettings(spec, source) {
     settings[key] = value;
   }
 
-  // The two tempo settings are alternative ways of saying the same thing.
-  // Given both, one would have to silently lose, so refuse instead.
+  // Each of these pairs says the same thing two ways. Given both, one would
+  // have to silently lose, so refuse instead.
   if (has(settings, "cycle_duration") && has(settings, "pulse_duration")) {
     throw new SpecError(`${source}: give cycle_duration or pulse_duration, not both`);
   }
+  if (has(settings, "tempo") && (has(settings, "cycle_duration") || has(settings, "pulse_duration"))) {
+    throw new SpecError(`${source}: give tempo, or the older cycle_duration/pulse_duration, not both`);
+  }
+  if (has(settings, "bars") && has(settings, "loops")) {
+    throw new SpecError(`${source}: give bars, or its older name loops, not both`);
+  }
+  settings.legacy = LEGACY_KEYS.some((key) => has(settings, key));
+
+  const click = has(spec, "click") ? spec.click : false;
+  if (typeof click !== "boolean") throw new SpecError(`${source}: click must be true or false, got ${shown(click)}`);
+  settings.click = click;
 
   // `scale` and `root` at the top level are defaults for any layer written in
   // degrees. A layer stating pitches as `notes` ignores both, which is what
@@ -222,6 +288,10 @@ export function layerFromSpec(entry, { defaultScale = null, defaultRoot = 0, whe
   if (!isWhole(entry.beats)) {
     throw new SpecError(`${where}: beats must be a whole number, got ${shown(entry.beats)}`);
   }
+  const over = has(entry, "over") ? entry.over : 1;
+  if (!isWhole(over)) {
+    throw new SpecError(`${where}: over must be a whole number of bars, got ${shown(over)}`);
+  }
   if (typeof entry.sample !== "string") throw new SpecError(`${where}: sample must be a name`);
 
   const notes = has(entry, "notes") ? requireSequence(entry.notes, `${where}: notes`) : null;
@@ -254,7 +324,7 @@ export function layerFromSpec(entry, { defaultScale = null, defaultRoot = 0, whe
   try {
     // The same rules everywhere -- one place, no drift.
     return makeLayer({
-      beats: entry.beats, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo,
+      beats: entry.beats, over, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo,
     });
   } catch (e) {
     // Only rule-breaking gets a friendly message. Anything else is a real

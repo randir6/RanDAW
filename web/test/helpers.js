@@ -17,7 +17,7 @@ export const HERE = dirname(fileURLToPath(import.meta.url));
 export const WEB = join(HERE, "..");
 export const ROOT = join(WEB, "..");
 
-// The six built-in samples, decoded: name -> { channels, sampleRate }.
+// The built-in samples, decoded: name -> { channels, sampleRate }.
 export const LIBRARY = new Map(
   readdirSync(join(ROOT, "samples"))
     .filter((name) => name.endsWith(".wav"))
@@ -51,6 +51,6 @@ export const fingerprint = (value) => sha256(canonical(value));
 // Spec in, WAV bytes out: what the page does when you press Download.
 export function renderWav(spec) {
   const piece = buildPiece(spec, { samples: LIBRARY.keys() });
-  const mix = renderAudio(schedule(piece.layers, piece.loops, { audible: piece.audible }), { ...piece, library: LIBRARY });
+  const mix = renderAudio(schedule(piece), { ...piece, library: LIBRARY });
   return { piece, wav: encodeWav16(finishMix(mix).mix, piece.sampleRate) };
 }

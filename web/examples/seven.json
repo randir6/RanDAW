@@ -1,6 +1,7 @@
 {
-  "cycle_duration": 2.8,
-  "loops": 6,
+  "tempo": 150,
+  "base": 7,
+  "bars": 6,
   "layer": [
     {"beats": 7, "notes": [0], "sample": "kick.wav", "gain": 0.7, "active": [1, 4, 6]},
     {"beats": 7, "notes": [0], "sample": "snare.wav", "gain": 0.33, "active": [3]},

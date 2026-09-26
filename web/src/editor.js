@@ -10,9 +10,9 @@
 // result is valid, records it for undo, and plays it.
 
 import {
-  addLayer, duplicateLayer, effectiveScale, formatSequence, insertStep, MAX_BEATS, MAX_LOOPS, parseSequence,
-  removeLayer, removeStep, sequenceKey, setBeats, setLayer, setSequence, setSetting, setStep,
-  switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE, MAX_BEATS,
+  MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
+  setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
 import { SCALES } from "./scales.js";
@@ -61,15 +61,19 @@ function focusAt(root, path) {
   target?.focus({ preventScroll: true });
 }
 
-// A number with − and + buttons either side.
-function stepper(label, value, onChange, { min = -Infinity, max = Infinity } = {}) {
+// A number with − and + buttons either side, and optionally a unit after.
+function stepper(label, value, onChange, { min = -Infinity, max = Infinity, unit = null } = {}) {
   return h("span", { class: "stepper" },
     h("span", { class: "label" }, label),
     h("button", { type: "button", "aria-label": `${label} down`, disabled: value <= min, onclick: () => onChange(value - 1) }, "−"),
     h("span", { class: "value" }, String(value)),
     h("button", { type: "button", "aria-label": `${label} up`, disabled: value >= max, onclick: () => onChange(value + 1) }, "+"),
+    unit && h("span", { class: "unit" }, unit),
   );
 }
+
+// "1 bar", "2 bars".
+const bars = (n) => `${n} bar${n === 1 ? "" : "s"}`;
 
 // A drop-down menu. `options` is a list of [value, label] pairs.
 //
@@ -92,18 +96,20 @@ const pretty = (name) => name.replaceAll("_", " ");
 //   spec        the current piece, as written
 //   derived     the same piece worked out (for labels, and who is audible)
 //   samples     the names in the sample library
-//   selected    the selected sequence step, { layer, step }, or null
+//   selected    the selected sequence position, { layer, position }, or null
 //   history     { canUndo, canRedo }
 //   name        what the piece is called (used for saved files)
 //   maxSeconds  the longest piece the page allows
-//   actions     { edit(fn), select(layer, step), undo(), redo(), rename(name) }
+//   actions     { edit(fn), select(layer, position), undo(), redo(), rename(name) }
 export function renderEditor({ container, spec, derived, samples, selected, history, name, maxSeconds, actions }) {
   const { edit, select } = actions;
   const pieceScale = spec.scale ?? null;
   // A piece-wide scale can only be removed if no degree layer relies on it.
   const scaleNeeded = spec.layer.some((l) => sequenceKey(l) === "degrees" && !l.scale);
 
-  const cycle = derived.cycle_duration;
+  const barSeconds = derived.bar_duration;
+  // The tempo as a person would write it: 120, or 109.09.
+  const tempo = String(Number(derived.tempo.toFixed(2)));
   const pieceRow = h("div", { class: "bar piece-controls" },
     h("span", { class: "panel-title" }, "Piece"),
     h("input", {
@@ -115,21 +121,29 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     h("button", { type: "button", disabled: !history.canUndo, onclick: actions.undo, title: "Undo (Ctrl+Z / ⌘Z)" }, "↶ Undo"),
     h("button", { type: "button", disabled: !history.canRedo, onclick: actions.redo, title: "Redo" }, "↷ Redo"),
     h("label", { class: "field" },
-      h("span", { class: "label" }, "Cycle"),
+      h("span", { class: "label" }, "Tempo"),
       h("input", {
-        type: "number", min: "0.1", max: "30", step: "0.1", value: cycle.toFixed(2), class: "short",
-        "aria-label": "Cycle length in seconds",
+        type: "number", min: String(MIN_TEMPO), max: String(MAX_TEMPO), step: "any", value: tempo, class: "short",
+        "aria-label": "Tempo in beats per minute of the base beat",
         onchange: (e) => {
-          const seconds = Number(e.target.value);
+          const bpm = Number(e.target.value);
           // A refused change (not a positive number, or a piece too long)
-          // puts the box back to the real cycle length.
-          if (!(seconds > 0 && edit((s) => setSetting(s, "cycle_duration", seconds)))) {
-            e.target.value = cycle.toFixed(2);
+          // puts the box back to the real tempo. The min and max above only
+          // limit the arrows beside the box, not what can be typed.
+          if (!(bpm > 0 && edit((s) => setSetting(s, "tempo", bpm)))) {
+            e.target.value = tempo;
           }
         },
       }),
-      h("span", { class: "unit" }, "s")),
-    stepper("Loops", spec.loops, (n) => edit((s) => setSetting(s, "loops", n)), { min: 1, max: MAX_LOOPS }),
+      h("span", { class: "unit" }, "BPM")),
+    stepper("Base", derived.base, (n) => edit((s) => setSetting(s, "base", n)),
+      { min: 1, max: MAX_BASE, unit: "beats per bar" }),
+    h("button", {
+      type: "button", class: "toggle click", "aria-pressed": String(derived.click),
+      title: "Click: hear the base beats, like a metronome", "aria-label": "Click",
+      onclick: () => edit((s) => setSetting(s, "click", derived.click ? null : true)),
+    }, "Click"),
+    stepper("Bars", derived.bars, (n) => edit((s) => setSetting(s, "bars", n)), { min: 1, max: MAX_BARS }),
     repeatNote(),
     menu("Scale", pieceScale ?? "",
       [["", scaleNeeded ? "(none — a layer needs one)" : "none"], ...SCALE_NAMES.map((n) => [n, pretty(n)])],
@@ -142,26 +156,27 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     }, "+ Add layer"),
   );
 
-  // How long the whole pattern takes to come round, next to Loops. If the
-  // loops do not cover a whole number of repeats, the file will restart the
+  // How long the whole pattern takes to come round, next to Bars. If the
+  // length is not a whole number of repeats, the file will restart the
   // pattern part-way through each time it loops -- so say so, and offer to fix
   // it where the fix fits the page's limits.
   function repeatNote() {
-    const whole = derived.repeat_cycles;
+    const whole = derived.repeat_bars;
     if (whole === 1) return null;
-    const clean = spec.loops % whole === 0;
-    // The nearest whole number of repeats: rounding the loops up keeps at
+    const length = derived.bars;
+    const clean = length % whole === 0;
+    // The nearest whole number of repeats: rounding the length up keeps at
     // least the length chosen; down only if up would not fit the limits.
-    const fits = (n) => n >= whole && n <= MAX_LOOPS && n * cycle <= maxSeconds;
-    const up = Math.ceil(spec.loops / whole) * whole;
-    const down = Math.floor(spec.loops / whole) * whole;
+    const fits = (n) => n >= whole && n <= MAX_BARS && n * barSeconds <= maxSeconds;
+    const up = Math.ceil(length / whole) * whole;
+    const down = Math.floor(length / whole) * whole;
     const suggestion = fits(up) ? up : fits(down) ? down : null;
     return h("span", { class: `repeat${clean ? "" : " uneven"}` },
-      `whole pattern: ${whole} cycles`,
+      `whole pattern repeats every ${bars(whole)}`,
       !clean && suggestion !== null && h("button", {
         type: "button", title: "So the file loops on a whole number of repeats",
-        onclick: () => edit((s) => setSetting(s, "loops", suggestion)),
-      }, `Use ${suggestion} loops`));
+        onclick: () => edit((s) => setSetting(s, "bars", suggestion)),
+      }, `Use ${bars(suggestion)}`));
   }
 
   const cards = spec.layer.map((layer, i) => layerCard(layer, i));
@@ -196,6 +211,8 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       menu("Sample", layer.sample, samples.map((n) => [n, n.replace(/\.wav$/i, "")]),
         (v) => edit((s) => setLayer(s, i, "sample", v))),
       stepper("Beats", layer.beats, (n) => edit((s) => setBeats(s, i, n)), { min: 1, max: MAX_BEATS }),
+      stepper("over", info.over, (n) => edit((s) => setOver(s, i, n)),
+        { min: 1, max: MAX_OVER, unit: info.over === 1 ? "bar" : "bars" }),
       menu("Pitch", key, [["notes", "semitones"], ["degrees", "scale degrees"]],
         (v) => edit((s) => switchPitchKind(s, i, v))),
       isDegrees && menu("Scale", layer.scale ?? "",
@@ -233,30 +250,30 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       }, "✕")),
     );
 
-    // The step strip: one tile per step of the sequence.
+    // The sequence: one tile per position, read one position per beat.
     const labels = info.sequence_labels;
-    const tiles = seq.map((value, step) =>
+    const tiles = seq.map((value, position) =>
       h("button", {
         type: "button",
-        class: `tile${value === REST ? " rest" : ""}${isSelected && selected.step === step ? " selected" : ""}`,
-        "aria-label": `Step ${step + 1}: ${value === REST ? "rest" : value}`,
-        onclick: () => select(i, isSelected && selected.step === step ? null : step),
-      }, labels[step]));
-    const at = isSelected ? selected.step : seq.length - 1;
-    const strip = h("div", { class: "steps" },
-      h("span", { class: "label" }, "Steps"),
+        class: `tile${value === REST ? " rest" : ""}${isSelected && selected.position === position ? " selected" : ""}`,
+        "aria-label": `Position ${position + 1}: ${value === REST ? "rest" : value}`,
+        onclick: () => select(i, isSelected && selected.position === position ? null : position),
+      }, labels[position]));
+    const at = isSelected ? selected.position : seq.length - 1;
+    const strip = h("div", { class: "sequence-row" },
+      h("span", { class: "label" }, "Sequence"),
       ...tiles,
       h("button", {
-        type: "button", class: "grow", title: "Add a step (a copy of the selected one)",
-        onclick: () => { edit((s) => insertStep(s, i, at)); select(i, at + 1); },
+        type: "button", class: "grow", title: "Add a position (a copy of the selected one)",
+        onclick: () => { edit((s) => insertPosition(s, i, at)); select(i, at + 1); },
       }, "+"),
       h("button", {
-        type: "button", class: "grow", disabled: seq.length === 1, title: "Remove the selected step",
-        onclick: () => { edit((s) => removeStep(s, i, at)); select(i, null); },
+        type: "button", class: "grow", disabled: seq.length === 1, title: "Remove the selected position",
+        onclick: () => { edit((s) => removePosition(s, i, at)); select(i, null); },
       }, "−"),
       sequenceField(seq, i),
       h("span", { class: "repeat" },
-        info.repeat_cycles === 1 ? "same every cycle" : `comes round every ${info.repeat_cycles} cycles`),
+        info.repeat_bars === 1 ? "same every bar" : `repeats every ${bars(info.repeat_bars)}`),
     );
 
     // One button per beat, pressed when the beat is on: the same as tapping
@@ -268,13 +285,13 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
       Array.from({ length: layer.beats }, (_, b) => b + 1).map((beat) =>
         h("button", {
           type: "button", class: "beat", "aria-pressed": String(on.has(beat)),
-          title: `Beat ${beat}: ${on.has(beat) ? "on" : "off"} in every cycle`,
+          title: `Beat ${beat}: ${on.has(beat) ? "on" : "off"} every time round`,
           onclick: () => edit((s) => toggleBeat(s, i, beat)),
         }, String(beat))),
     );
 
     return h("div", { class: `card l${i}${info.audible ? "" : " silent"}`, "data-layer": i },
-      head, beatRow, strip, isSelected && keypad(layer, i, selected.step));
+      head, beatRow, strip, isSelected && keypad(layer, i, selected.position));
   }
 
   // The same sequence as text, for typing or pasting a long one. Changes on
@@ -298,17 +315,17 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     return h("span", { class: "sequence-wrap" }, input, error);
   }
 
-  // The keypad for the selected step: scale degrees for a degree layer, a
-  // semitone stepper for a note layer, and a rest for both.
-  function keypad(layer, i, step) {
+  // The keypad for the selected position: scale degrees for a degree layer,
+  // a semitone stepper for a note layer, and a rest for both.
+  function keypad(layer, i, position) {
     const key = sequenceKey(layer);
-    const value = layer[key][step];
-    const setTo = (v) => edit((s) => setStep(s, i, step, v));
+    const value = layer[key][position];
+    const setTo = (v) => edit((s) => setPosition(s, i, position, v));
     const current = value === REST ? null : value;
     let keys;
     if (key === "degrees") {
       const span = SCALES[effectiveScale(spec, layer)].length;
-      // Degrees shown in the octave the step is already in, so an octave
+      // Degrees shown in the octave the position is already in, so an octave
       // shift is kept when another degree is chosen.
       const base = current === null ? 0 : Math.floor((current - 1) / span) * span;
       keys = [
@@ -328,8 +345,8 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         h("button", { type: "button", onclick: () => setTo(0) }, "0"),
       ];
     }
-    return h("div", { class: "keypad", role: "group", "aria-label": `Step ${step + 1} of layer ${i + 1}` },
-      h("span", { class: "label" }, `Step ${step + 1}`),
+    return h("div", { class: "keypad", role: "group", "aria-label": `Position ${position + 1} of layer ${i + 1}` },
+      h("span", { class: "label" }, `Position ${position + 1}`),
       ...keys,
       h("button", { type: "button", class: value === REST ? "on" : null, onclick: () => setTo(REST) }, "rest"),
       h("button", { type: "button", onclick: () => select(i, null) }, "Done"),

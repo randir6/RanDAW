@@ -9,11 +9,13 @@
 // is checked and resolved.
 
 import { roundHalfEven, toFixedHalfEven } from "./numbers.js";
-import { lcmOfBeats } from "./schedule.js";
-import { checkSettings, layerFromSpec, SpecError } from "./spec.js";
+import { CLICK_SAMPLE, pulsesPerBar } from "./schedule.js";
+import { checkSettings, DEFAULT_BASE, layerFromSpec, SpecError } from "./spec.js";
 
-export const DEFAULT_CYCLE_DURATION = 2.0;
+export const DEFAULT_TEMPO = 120;
 export const DEFAULT_SAMPLE_RATE = 44100;
+// What an older piece with no timing at all got: a 2-second bar.
+const LEGACY_BAR_SECONDS = 2.0;
 
 // Check a spec and resolve it into a Piece, or throw SpecError saying why not.
 //
@@ -36,56 +38,79 @@ export function buildPiece(spec, { samples, source = "piece" }) {
     }),
   );
 
-  const loops = settings.loops ?? null;
-  if (loops === null) throw new SpecError('need loops: e.g. "loops": 4');
-  if (loops < 1) throw new SpecError(`loops must be >= 1, got ${loops}`);
+  // Older pieces called the length `loops`; checkSettings has refused both.
+  const bars = settings.bars ?? settings.loops ?? null;
+  if (bars === null) throw new SpecError('need bars: e.g. "bars": 8');
+  if (bars < 1) throw new SpecError(`bars must be >= 1, got ${bars}`);
+
+  const base = settings.base ?? DEFAULT_BASE;
+  if (base < 1) throw new SpecError(`base must be at least 1 beat per bar, got ${base}`);
 
   const sampleRate = settings.sample_rate ?? DEFAULT_SAMPLE_RATE;
   if (sampleRate < 1) throw new SpecError(`sample_rate must be > 0, got ${sampleRate}`);
 
-  const lcmBeats = lcmOfBeats(layers);
+  const click = settings.click;
   const warnings = [];
 
-  // Two ways to set the tempo; checkSettings has already refused both at once.
-  let samplesPerPulse, requestedCycle;
-  if (Object.hasOwn(settings, "pulse_duration")) {
-    const pulseDuration = settings.pulse_duration;
-    if (pulseDuration <= 0) throw new SpecError(`pulse duration must be > 0, got ${pulseDuration}`);
-    samplesPerPulse = roundHalfEven(pulseDuration * sampleRate);
-    requestedCycle = null;
+  // Two ways of timing a piece.
+  //
+  // TODAY'S: a tempo in BPM of the base beat. 4 beats at 120 BPM is a
+  // 2-second bar. The base joins the pulse grid, so its beats land exactly.
+  //
+  // OLDER pieces gave the bar's length in seconds (cycle_duration), or the
+  // length of one pulse (pulse_duration). They are timed exactly as they
+  // always were -- the base stays out of the grid unless the click needs it
+  // -- so they sound identical, to the byte.
+  let perBar, samplesPerPulse, requestedBar;
+  if (!settings.legacy) {
+    const tempo = settings.tempo ?? DEFAULT_TEMPO;
+    if (tempo <= 0) throw new SpecError(`tempo must be > 0 BPM, got ${tempo}`);
+    requestedBar = (base * 60) / tempo;
+    perBar = pulsesPerBar(layers, base);
   } else {
-    requestedCycle = settings.cycle_duration ?? DEFAULT_CYCLE_DURATION;
-    if (requestedCycle <= 0) throw new SpecError(`cycle duration must be > 0, got ${requestedCycle}`);
-    // Share the cycle out across the grid. This is the line that makes adding
-    // a layer subdivide the cycle rather than stretch it: a bigger LCM
-    // produces a finer grid, not a longer piece.
-    samplesPerPulse = roundHalfEven((requestedCycle * sampleRate) / lcmBeats);
+    perBar = pulsesPerBar(layers, click ? base : null);
+    if (Object.hasOwn(settings, "pulse_duration")) {
+      const pulseDuration = settings.pulse_duration;
+      if (pulseDuration <= 0) throw new SpecError(`pulse_duration must be > 0, got ${pulseDuration}`);
+      samplesPerPulse = roundHalfEven(pulseDuration * sampleRate);
+      requestedBar = null;
+    } else {
+      requestedBar = settings.cycle_duration ?? LEGACY_BAR_SECONDS;
+      if (requestedBar <= 0) throw new SpecError(`cycle_duration must be > 0, got ${requestedBar}`);
+    }
+  }
+  if (requestedBar !== null) {
+    // Share the bar out across the pulse grid. This is the line that makes
+    // adding a layer subdivide the bar rather than stretch it: more pulses
+    // make a finer grid, not a longer piece.
+    samplesPerPulse = roundHalfEven((requestedBar * sampleRate) / perBar);
   }
 
   if (samplesPerPulse < 1) {
     throw new SpecError(
-      `a ${requestedCycle}s cycle split across an LCM of ${lcmBeats} pulses leaves under one ` +
-        `sample per pulse; lengthen the cycle or choose beat counts sharing more common factors`,
+      `a ${requestedBar}s bar split into ${perBar} pulses leaves under one sample per pulse; ` +
+        `slow the tempo, or choose beat counts sharing more common factors`,
     );
   }
 
-  // Work back from the rounded whole number to the cycle length we'll
+  // Work back from the rounded whole number to the bar length we'll
   // ACTUALLY produce, which may differ slightly from what was asked for. Only
   // worth mentioning past 1% -- below that it's inaudible, and warning about
   // the inaudible teaches people to ignore warnings.
-  const cycleDuration = (lcmBeats * samplesPerPulse) / sampleRate;
-  if (requestedCycle !== null && Math.abs(cycleDuration - requestedCycle) > requestedCycle / 100) {
+  const barDuration = (perBar * samplesPerPulse) / sampleRate;
+  if (requestedBar !== null && Math.abs(barDuration - requestedBar) > requestedBar / 100) {
     warnings.push(
-      `cycle rounded to ${toFixedHalfEven(cycleDuration, 4)}s from ` +
-        `${toFixedHalfEven(requestedCycle, 4)}s -- an LCM of ${lcmBeats} ` +
-        `does not divide the sample rate evenly`,
+      `bar rounded to ${toFixedHalfEven(barDuration, 4)}s from ` +
+        `${toFixedHalfEven(requestedBar, 4)}s -- ${perBar} pulses per bar ` +
+        `do not divide the sample rate evenly`,
     );
   }
 
   // Every sample must exist in the library. Checked now, so a typo fails
   // immediately rather than part-way through making the sound.
   const known = new Set(samples);
-  const missing = layers.map((layer) => layer.sample).filter((name) => !known.has(name));
+  const needed = layers.map((layer) => layer.sample).concat(click ? [CLICK_SAMPLE] : []);
+  const missing = needed.filter((name) => !known.has(name));
   if (missing.length > 0) {
     const available = [...known].sort().join(", ") || "none";
     throw new SpecError(`unknown sample ${missing.join(", ")}. This page has: ${available}`);
@@ -100,12 +125,20 @@ export function buildPiece(spec, { samples, source = "piece" }) {
   return Object.freeze({
     layers: Object.freeze(layers),
     audible: Object.freeze(audible),
-    loops,
+    bars,
+    base,
+    click,
+    // The tempo as asked for (or, for an older piece, as its bar length
+    // works out), in BPM of the base beat.
+    tempo: (base * 60) / (requestedBar ?? barDuration),
+    // True for a piece in the older words, timed the older way.
+    legacy: settings.legacy,
+    pulsesPerBar: perBar,
     samplesPerPulse,
     sampleRate,
-    // The cycle length asked for, or null when the tempo was given as a pulse
+    // The bar length asked for, or null when an older piece gave a pulse
     // duration instead.
-    requestedCycle,
+    requestedBar,
     // A private copy of the spec, so changing the original afterwards cannot
     // reach into a Piece that is supposed to be fixed. structuredClone copies
     // everything, lists inside objects inside lists included.
@@ -113,10 +146,9 @@ export function buildPiece(spec, { samples, source = "piece" }) {
     warnings: Object.freeze(warnings),
     // Worked out once here from the settled values above, so they can never
     // disagree with them.
-    lcmBeats,
-    totalPulses: loops * lcmBeats,
+    totalPulses: bars * perBar,
     pulseDuration: samplesPerPulse / sampleRate,
-    cycleDuration,
-    totalDuration: loops * cycleDuration,
+    barDuration,
+    totalDuration: bars * barDuration,
   });
 }

@@ -15,12 +15,17 @@
 
 import { REST } from "./layer.js";
 import { degreeToSemitones, SCALES } from "./scales.js";
+import { CLICK_SAMPLE } from "./schedule.js";
 
 // Sensible ends for the + and - buttons. Not rules of the engine, which has
 // no upper limits, just where the buttons stop.
 export const MAX_BEATS = 32;
-export const MAX_LOOPS = 32;
-export const MAX_STEPS = 32;
+export const MAX_OVER = 8;        // bars one layer's beats can spread across
+export const MAX_BASE = 16;       // beats per bar
+export const MAX_BARS = 64;
+export const MAX_POSITIONS = 32;  // notes and rests in one sequence
+export const MIN_TEMPO = 20;
+export const MAX_TEMPO = 400;
 
 // structuredClone makes a complete, independent copy -- lists inside objects
 // inside lists included -- so changing the copy cannot reach the original.
@@ -36,14 +41,17 @@ function put(object, key, value) {
 
 // --- The whole piece ---------------------------------------------------------------
 
-// Change a piece-wide setting: cycle_duration, loops, scale or root.
+// Change a piece-wide setting: tempo, base, bars, click, scale or root.
 export function setSetting(spec, key, value) {
   const next = copy(spec);
-  if (key === "cycle_duration") {
-    // The two tempo settings cannot both be given, and the editor speaks in
-    // cycles, so setting a cycle length replaces a pulse duration.
+  // A piece cannot give the same thing in both the current and the older
+  // words, so setting the current one clears the older one. (The page
+  // upgrades older pieces as it opens them, so this is only a safety net.)
+  if (key === "tempo") {
+    delete next.cycle_duration;
     delete next.pulse_duration;
   }
+  if (key === "bars") delete next.loops;
   put(next, key, value);
   return next;
 }
@@ -61,11 +69,12 @@ export function setLayer(spec, index, key, value) {
 }
 
 // A new layer: a single hit, on a sample not used yet if there is one, fairly
-// quiet so adding it does not suddenly overload the mix.
+// quiet so adding it does not suddenly overload the mix. The click's sample
+// can be chosen for a layer from the menu, but is never picked for you.
 export function addLayer(spec, sampleNames) {
   const next = copy(spec);
   const used = new Set(next.layer.map((l) => l.sample));
-  const sample = sampleNames.find((name) => !used.has(name)) ?? sampleNames[0];
+  const sample = sampleNames.find((name) => !used.has(name) && name !== CLICK_SAMPLE) ?? sampleNames[0];
   next.layer.push({ beats: 4, notes: [0], sample, gain: 0.4 });
   return next;
 }
@@ -119,8 +128,17 @@ export function setBeats(spec, index, beats) {
   return next;
 }
 
-// Switch one beat (counting from 1) off, or back on. The same beat in every
-// cycle, which is what `active` means.
+// How many bars a layer's beats spread across. 1, the usual, is written by
+// leaving `over` out.
+export function setOver(spec, index, over) {
+  const next = copy(spec);
+  const value = clamp(over, 1, MAX_OVER);
+  put(next.layer[index], "over", value === 1 ? null : value);
+  return next;
+}
+
+// Switch one beat (counting from 1) off, or back on. The same beat every
+// time the layer comes round, which is what `active` means.
 export function toggleBeat(spec, index, beat) {
   const next = copy(spec);
   const layer = next.layer[index];
@@ -135,26 +153,29 @@ export function toggleBeat(spec, index, beat) {
 
 // --- The sequence ------------------------------------------------------------------
 
-// Put a value (a number, or REST) at one step of a layer's sequence.
-export function setStep(spec, index, step, value) {
+// A sequence is a list of notes and rests, read one POSITION per beat.
+// Positions count from 0 here, as list places do.
+
+// Put a value (a number, or REST) at one position of a layer's sequence.
+export function setPosition(spec, index, position, value) {
   const next = copy(spec);
-  next.layer[index][sequenceKey(next.layer[index])][step] = value;
+  next.layer[index][sequenceKey(next.layer[index])][position] = value;
   return next;
 }
 
-// Add a step after `step`, copying it, so the sequence grows by repeating
-// what is selected -- usually the most useful thing to change next.
-export function insertStep(spec, index, step) {
+// Add a position after `position`, copying it, so the sequence grows by
+// repeating what is selected -- usually the most useful thing to change next.
+export function insertPosition(spec, index, position) {
   const next = copy(spec);
   const seq = next.layer[index][sequenceKey(next.layer[index])];
-  if (seq.length < MAX_STEPS) seq.splice(step + 1, 0, seq[step]);
+  if (seq.length < MAX_POSITIONS) seq.splice(position + 1, 0, seq[position]);
   return next;
 }
 
-export function removeStep(spec, index, step) {
+export function removePosition(spec, index, position) {
   const next = copy(spec);
   const seq = next.layer[index][sequenceKey(next.layer[index])];
-  if (seq.length > 1) seq.splice(step, 1);
+  if (seq.length > 1) seq.splice(position, 1);
   return next;
 }
 

@@ -1,6 +1,7 @@
 {
-  "cycle_duration": 2.4,
-  "loops": 6,
+  "tempo": 100,
+  "base": 4,
+  "bars": 6,
   "scale": "dorian",
   "root": 0,
   "layer": [

@@ -16,15 +16,27 @@ import { test } from "node:test";
 import { pieceToDerived } from "../src/derive.js";
 import { buildPiece } from "../src/piece.js";
 import { SpecError } from "../src/spec.js";
-import { fingerprint, HERE, LIBRARY, readJson, renderWav, sha256, WEB } from "./helpers.js";
+import { fingerprint, HERE, LIBRARY, readJson, renderWav, sha256 } from "./helpers.js";
 
 const FIXTURES = `${HERE}/fixtures`;
 
-// Fields added to each layer after the Python version was retired. The
-// answer key cannot know about them, so they are set aside before comparing.
-const asRecorded = ({ repeat_cycles, ...derived }) => ({
+// The answers were recorded in the older words: "cycle" for a bar, "loops"
+// for the number of bars, "lcm" for pulses per bar, "step" for a sequence
+// position. This puts today's
+// derived data back into those words, and sets aside the fields added since,
+// which the answer key cannot know about. Only the NAMES change here -- every
+// number is compared exactly as it comes out.
+const OLD_WARNING = /^bar rounded to (\S+)s from (\S+)s -- (\d+) pulses per bar do not divide the sample rate evenly$/;
+const asRecorded = ({ tempo, base, click, repeat_bars, bars, bar_duration, pulses_per_bar, ...derived }) => ({
   ...derived,
-  layers: derived.layers.map(({ mute, solo, audible, repeat_cycles, ...rest }) => rest),
+  loops: bars,
+  lcm: pulses_per_bar,
+  cycle_duration: bar_duration,
+  warnings: derived.warnings.map((w) =>
+    w.replace(OLD_WARNING, "cycle rounded to $1s from $2s -- an LCM of $3 does not divide the sample rate evenly")),
+  layers: derived.layers.map(({ over, mute, solo, audible, repeat_bars, ...rest }) => rest),
+  cells: derived.cells.map(({ bar, position, ...rest }) => ({ ...rest, cycle: bar, step: position })),
+  coincidences: derived.coincidences.map(({ bar, ...rest }) => ({ ...rest, cycle: bar })),
 });
 
 test("the canonical fingerprint agrees with Python's", () => {
@@ -35,7 +47,10 @@ test("the canonical fingerprint agrees with Python's", () => {
 const examples = readJson(FIXTURES, "examples.json");
 for (const [name, expected] of Object.entries(examples)) {
   test(`example ${name}: same grid and a byte-identical WAV`, () => {
-    const spec = readJson(WEB, "examples", `${name}.json`);
+    // The examples as they were when the answers were recorded. (Today's
+    // examples/ are in the newer words, which time a piece slightly
+    // differently.)
+    const spec = readJson(FIXTURES, "legacy_examples", `${name}.json`);
     const { piece, wav } = renderWav(spec);
     // deepStrictEqual compares every field of every cell, and on failure
     // prints exactly which ones differ.

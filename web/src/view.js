@@ -1,8 +1,9 @@
-// Drawing a piece in step notation.
+// Drawing a piece as a grid of beats.
 //
-// One row per layer; each row spans a cycle and is divided into that layer's
-// beats, so beats in different rows that happen at the same instant line up
-// vertically. That alignment is the polyrhythm made visible.
+// One row per layer, running left to right through the bars. Each layer's
+// span of bars is divided into that layer's beats, so beats in different
+// rows that happen at the same instant line up vertically. That alignment is
+// the polyrhythm made visible. Faint lines mark the base beats in every bar.
 //
 // This module only DRAWS. Everything it shows -- which beat sounds, its label,
 // how high it sits, which layers coincide -- arrives already worked out in
@@ -48,13 +49,13 @@ function tip(node, text) {
 
 // Set up a drawing of one piece in the given <svg>. Returns an object whose
 // methods the page calls: show(t) to move the playhead, highlight() to mark a
-// sequence step, and so on.
+// sequence position, and so on.
 //
 // Two kinds of tap are reported back rather than acted on, because what they
 // mean is the page's business, not the drawing's:
 //   onBeat(layer, beat)  a beat was tapped (layer from 0, beat from 1)
-//   onSeek(cycles)       the strip along the top was tapped, at this many
-//                        cycles in (2.5 = halfway through the third cycle)
+//   onSeek(bars)         the strip along the top was tapped, at this many
+//                        bars in (2.5 = halfway through the third bar)
 //
 // This is a "factory function": everything declared inside it is private to
 // this one drawing, and the returned object is the only way in. Every change
@@ -66,29 +67,38 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
   const H = TOP + nLayers * (ROW_H + ROW_GAP) + 6;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
-  // How many cycles to show side by side on one page. Up to four, but fewer when a layer
-  // has so many beats that four cycles would squash each below MIN_CELL wide.
-  const maxBeats = Math.max(...d.layers.map((l) => l.beats));
-  let perPage = Math.min(4, maxPerPage);
-  while (perPage > 1 && AREA / perPage / maxBeats < MIN_CELL) perPage -= 1;
-  perPage = Math.min(perPage, d.loops);
+  // How many bars to show side by side on one page. Up to four, but fewer
+  // when a layer packs so many beats into a bar that four bars would squash
+  // each beat below MIN_CELL wide. A page that holds every layer's span of
+  // bars whole (2 bars for a layer "over 2") is preferred, so a span is not
+  // split across two pages.
+  const densest = Math.max(...d.layers.map((l) => l.beats / l.over));
+  const spansFit = (n) => d.layers.every((l) => n % l.over === 0);
+  const fits = (n) => n === 1 || AREA / n / densest >= MIN_CELL;
+  let perPage = Math.min(4, maxPerPage, d.bars);
+  while (perPage > 1 && !fits(perPage)) perPage -= 1;
+  for (let n = perPage; n > 1; n--) {
+    if (spansFit(n)) { perPage = n; break; }
+  }
   const BAR_W = AREA / perPage;
-  const pages = Math.ceil(d.loops / perPage);
+  const pages = Math.ceil(d.bars / perPage);
 
   // Each cell and coincidence, grouped by the page it appears on, so drawing
   // a page does not have to search the whole piece.
-  const pageOf = (cycle) => Math.floor((cycle - 1) / perPage);
+  const pageOf = (bar) => Math.floor((bar - 1) / perPage);
   const cellsByPage = Array.from({ length: pages }, () => []);
-  for (const c of d.cells) cellsByPage[pageOf(c.cycle)].push(c);
+  for (const c of d.cells) cellsByPage[pageOf(c.bar)].push(c);
   const togetherByPage = Array.from({ length: pages }, () => []);
-  for (const k of d.coincidences) togetherByPage[pageOf(k.cycle)].push(k);
+  for (const k of d.coincidences) togetherByPage[pageOf(k.bar)].push(k);
 
   // Where things go on screen.
   const rowTop = (layer) => TOP + layer * (ROW_H + ROW_GAP);
   const barX = (slot) => GUTTER + slot * BAR_W;
-  const xOf = (cycle, offset, page) => barX(cycle - 1 - page * perPage) + offset * BAR_W;
+  const xOf = (bar, offset, page) => barX(bar - 1 - page * perPage) + offset * BAR_W;
+  // How wide one beat of a layer is: its span of bars shared among its beats.
+  const beatW = (layer) => (BAR_W * d.layers[layer].over) / d.layers[layer].beats;
   // A note's size depends on how much room its layer has per beat.
-  const radius = (layer) => Math.max(8, Math.min(14, (BAR_W / d.layers[layer].beats) * 0.4));
+  const radius = (layer) => Math.max(8, Math.min(14, beatW(layer) * 0.4));
   const yOf = (layer, height) => {
     const pad = radius(layer) + 7;
     // height runs 0 (lowest pitch) to 1 (highest); screen y runs downwards,
@@ -105,8 +115,8 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
   }
 
   let currentPage = -1;
-  let picked = null;   // the highlighted sequence step: { layer, step }, or null
-  let stepNodes = [];  // [{layer, step, node}] for everything on the page that belongs to a step
+  let picked = null;   // the highlighted sequence position: { layer, position }, or null
+  let placed = [];     // [{layer, position, node}] for everything on the page that belongs to a position
   let marks = [];      // [{node, time}] for notes on the current page
   let togethers = [];  // [{node, time}] for coincidence lines on the current page
   let playhead = null;
@@ -116,7 +126,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     svg.replaceChildren();  // empty it and start again
     marks = [];
     togethers = [];
-    stepNodes = [];
+    placed = [];
 
     // The diagonal hatching used for switched-off beats.
     const defs = el("defs", {}, svg);
@@ -146,11 +156,14 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
       if (why) el("tspan", { class: "state", dx: 8 }, name, why);
       const kind = info.percussive ? "drum hits"
         : info.pitch_kind === "degrees" ? `${info.scale} degrees` : "semitones";
-      const lines = [`${info.beats} beats · ${kind}`];
-      // A drum's sequence is only worth printing when it has rests in it --
-      // otherwise it is just "x", which the row already shows.
+      const lines = [info.over === 1 ? `${info.beats} beats` : `${info.beats} beats over ${info.over} bars`];
+      // The sequence, after what kind of values it holds. A drum's sequence is
+      // only worth printing when it has rests in it -- otherwise it is just
+      // "x", which the row already shows.
       if (!info.percussive || info.sequence_labels.includes("-")) {
-        lines.push(`seq ${info.sequence_labels.join(" ")}`);
+        lines.push(`${kind}: ${info.sequence_labels.join(" ")}`);
+      } else {
+        lines.push(kind);
       }
       if (info.active) lines.push(`on: ${info.active.join(" ")}`);
       lines.forEach((text, n) => {
@@ -162,16 +175,20 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
       });
     }
 
-    // The strip along the top: tap it to jump there. Drawn first, so the cycle
+    // The strip along the top: tap it to jump there. Drawn first, so the bar
     // numbers sit on top of it.
     const ruler = el("rect", { x: GUTTER, y: 4, width: AREA, height: TOP - 12, rx: 6, class: "ruler" }, back);
     tip(ruler, "Tap here to jump to this point");
 
-    // Cycle numbers and the bar lines between cycles.
+    // Bar numbers, the bar lines, and faint lines at the base beats between.
     for (let slot = 0; slot < perPage; slot++) {
-      const cycle = page * perPage + slot + 1;
-      if (cycle > d.loops) break;
-      el("text", { x: barX(slot) + 8, y: TOP - 14, class: "cycle-label" }, back, `cycle ${cycle}`);
+      const bar = page * perPage + slot + 1;
+      if (bar > d.bars) break;
+      el("text", { x: barX(slot) + 8, y: TOP - 14, class: "bar-label" }, back, `bar ${bar}`);
+      for (let beat = 1; beat < d.base; beat++) {
+        const x = barX(slot) + (beat / d.base) * BAR_W;
+        el("line", { x1: x, y1: TOP, x2: x, y2: H - 4, class: "base-line" }, back);
+      }
     }
     for (let slot = 0; slot <= perPage; slot++) {
       el("line", { x1: barX(slot), y1: TOP - 6, x2: barX(slot), y2: H - 4, class: "bar-line" }, back);
@@ -180,8 +197,10 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     // Every beat on this page: its time band, then its mark.
     for (const c of cellsByPage[page]) {
       const info = d.layers[c.layer];
-      const x0 = xOf(c.cycle, c.offset, page);
-      const w = BAR_W / info.beats;
+      const x0 = xOf(c.bar, c.offset, page);
+      // A beat of a layer over several bars can run past the end of the page;
+      // its band stops at the edge.
+      const w = Math.min(beatW(c.layer), barX(perPage) - x0);
       // Bands go in the back layer and marks in the front one; each sits in
       // its own group carrying the layer class, which gives it its colour.
       // data-layer and data-beat mark what a tap here means (see the click
@@ -191,15 +210,15 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
         x: x0 + 1.5, y: rowTop(c.layer) + 5, width: Math.max(1, w - 3), height: ROW_H - 10,
         class: `band ${c.status}`, ...tappable,
       }, el("g", { class: layerClass(c.layer) }, back));
-      stepNodes.push({ layer: c.layer, step: c.step, node: band });
+      placed.push({ layer: c.layer, position: c.position, node: band });
       const g = el("g", { class: layerClass(c.layer) }, front);
 
-      const where = `${info.name} · cycle ${c.cycle}, beat ${c.beat} · ${c.time.toFixed(2)} s`;
+      const where = `${info.name} · bar ${c.bar}, beat ${c.beat} of ${info.beats} · ${c.time.toFixed(2)} s`;
       if (c.status === "note") {
         const r = radius(c.layer);
         const y = yOf(c.layer, c.height);
         const m = el("g", { class: info.percussive ? "mark hit" : "mark note", ...tappable }, g);
-        stepNodes.push({ layer: c.layer, step: c.step, node: m });
+        placed.push({ layer: c.layer, position: c.position, node: m });
         if (info.percussive) {
           const s = r * 0.62, ym = rowTop(c.layer) + ROW_H / 2;
           el("circle", { cx: x0, cy: ym, r }, m);  // invisible, but easier to hover
@@ -214,7 +233,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
       } else if (c.status === "rest") {
         const ym = rowTop(c.layer) + ROW_H / 2;
         const r = el("rect", { x: x0 - 6, y: ym - 3, width: 12, height: 6, rx: 1, class: "rest-glyph", ...tappable }, g);
-        stepNodes.push({ layer: c.layer, step: c.step, node: r });
+        placed.push({ layer: c.layer, position: c.position, node: r });
         tip(r, `${where} · rest`);
       } else {
         tip(band, `${where} · beat switched off`);
@@ -224,7 +243,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     // Lines joining layers that sound at the same instant, drawn from the
     // uppermost to the lowest row involved.
     for (const k of togetherByPage[page]) {
-      const x = xOf(k.cycle, k.offset, page);
+      const x = xOf(k.bar, k.offset, page);
       const first = Math.min(...k.layers), last = Math.max(...k.layers);
       const line = el("line", {
         x1: x, y1: rowTop(first) + 8, x2: x, y2: rowTop(last) + ROW_H - 8, class: "together",
@@ -242,16 +261,16 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     return d.layers[i].audible === false ? `l${i} silent` : `l${i}`;
   }
 
-  // Outline every place one step of a layer's sequence lands on this page.
-  // With a sequence longer or shorter than the beat count, those places move
-  // from cycle to cycle -- which is exactly what this makes visible.
-  function highlight(layer, step) {
-    picked = layer === null ? null : { layer, step };
+  // Outline every place one position of a layer's sequence lands on this
+  // page. With a sequence longer or shorter than the beat count, those places
+  // move each time round -- which is exactly what this makes visible.
+  function highlight(layer, position) {
+    picked = layer === null ? null : { layer, position };
     applyHighlight();
   }
   function applyHighlight() {
-    for (const { layer, step, node } of stepNodes) {
-      node.classList.toggle("picked", picked !== null && picked.layer === layer && picked.step === step);
+    for (const { layer, position, node } of placed) {
+      node.classList.toggle("picked", picked !== null && picked.layer === layer && picked.position === position);
     }
   }
 
@@ -276,39 +295,42 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
 
   // Move the playhead and light up whatever is sounding at time t (seconds).
   function show(t) {
-    const cycleIndex = Math.min(d.loops - 1, Math.floor(t / d.cycle_duration));
-    const page = Math.floor(cycleIndex / perPage);
+    const barIndex = Math.min(d.bars - 1, Math.floor(t / d.bar_duration));
+    const page = Math.floor(barIndex / perPage);
     if (page !== currentPage) drawPage(page);
 
-    const frac = t / d.cycle_duration - cycleIndex;
-    const x = barX(cycleIndex - page * perPage) + frac * BAR_W;
+    const frac = t / d.bar_duration - barIndex;
+    const x = barX(barIndex - page * perPage) + frac * BAR_W;
     playhead.setAttribute("x1", x);
     playhead.setAttribute("x2", x);
     for (const m of marks) m.node.classList.toggle("on", t >= m.time && t - m.time < GLOW);
     for (const k of togethers) k.node.classList.toggle("on", t >= k.time && t - k.time < GLOW);
   }
 
-  // "cycles 5–8 of 12", for the page being shown.
+  // "bars 5–8 of 12", for the page being shown.
   function pageLabel() {
-    if (perPage === d.loops) return `cycles 1–${d.loops}`;
+    if (perPage === d.bars) return d.bars === 1 ? "bar 1" : `bars 1–${d.bars}`;
     const first = currentPage * perPage + 1;
-    return `cycles ${first}–${Math.min(d.loops, first + perPage - 1)} of ${d.loops}`;
+    const last = Math.min(d.bars, first + perPage - 1);
+    return `${first === last ? `bar ${first}` : `bars ${first}–${last}`} of ${d.bars}`;
   }
 
-  // The same grid written out as text, one line per layer per page.
+  // The same grid written out as text, one line per layer per page, each
+  // bar between | marks. A layer over several bars shows, in each bar, the
+  // beats that start in it.
   function textGrid() {
     const nameWidth = Math.max(...d.layers.map((l) => l.name.length)) + 2;
     const lines = [];
     for (let page = 0; page < pages; page++) {
-      const firstCycle = page * perPage + 1;
-      const lastCycle = Math.min(d.loops, firstCycle + perPage - 1);
-      lines.push(`cycles ${firstCycle}–${lastCycle}`);
+      const firstBar = page * perPage + 1;
+      const lastBar = Math.min(d.bars, firstBar + perPage - 1);
+      lines.push(firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`);
       for (let i = 0; i < nLayers; i++) {
         const bars = [];
-        for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
+        for (let bar = firstBar; bar <= lastBar; bar++) {
           const beats = cellsByPage[page]
-            .filter((c) => c.layer === i && c.cycle === cycle)
-            .sort((a, b) => a.beat - b.beat)
+            .filter((c) => c.layer === i && c.bar === bar)
+            .sort((a, b) => a.pulse - b.pulse)
             .map((c) => (c.status === "note" ? c.label : c.status === "rest" ? "-" : "."));
           bars.push(beats.join(" "));
         }
@@ -323,7 +345,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
   }
 
   svg.setAttribute("aria-label",
-    `Step notation for ${nLayers} layers over ${d.loops} cycles. The same grid is available as text below.`);
+    `Grid of beats for ${nLayers} layers over ${d.bars} bars. The same grid is available as text below.`);
   document.documentElement.dataset.window = perPage;
 
   return {
@@ -332,10 +354,10 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     pageLabel,
     textGrid,
     pages,
-    // Where the page `delta` pages away from this one starts, in cycles,
-    // wrapping round at either end.
     width: W,
     maxPerPage,
+    // Where the page `delta` pages away from this one starts, in bars,
+    // wrapping round at either end.
     pageStart: (delta) => ((currentPage + delta + pages) % pages) * perPage,
   };
 }

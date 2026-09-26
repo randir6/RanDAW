@@ -19,6 +19,7 @@ import { after, before, test } from "node:test";
 import { pieceToDerived } from "../src/derive.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { pageWithPiece } from "../src/share.js";
+import { upgradeSpec } from "../src/spec.js";
 import { findChromium, launch } from "./browser.js";
 import { readJson, renderWav, WEB } from "./helpers.js";
 
@@ -68,16 +69,16 @@ for (const name of examples) {
       const { piece, wav } = renderWav(spec);
       assert.equal(attrs.error, undefined, `page error: ${attrs.error}`);
       assert.equal(attrs.audioFingerprint, fnv1a(wav));
-      // Notes drawn on the first page: every sounding cell in its cycles.
+      // Notes drawn on the first page: every sounding cell in its bars.
       const perPage = Number(attrs.window);
       const expected = pieceToDerived(piece).cells
-        .filter((c) => c.status === "note" && c.cycle <= perPage).length;
+        .filter((c) => c.status === "note" && c.bar <= perPage).length;
       assert.equal(Number(attrs.notesDrawn), expected);
     }));
 }
 
 test("page: a saved page opens with the piece saved into it", { skip }, () => {
-  const spec = { cycle_duration: 1.5, loops: 2, layer: [layer(3), layer(4, "kick.wav")] };
+  const spec = { tempo: 160, bars: 2, layer: [layer(3), layer(4, "kick.wav")] };
   return withPage(savedPage("my groove", spec), "?t=0", async (page) => {
     const attrs = await page.evaluate(ATTRS);
     assert.equal(attrs.error, undefined);
@@ -86,15 +87,25 @@ test("page: a saved page opens with the piece saved into it", { skip }, () => {
   });
 });
 
+test("page: a page saved in the older words opens, upgraded to tempo and bars", { skip }, () => {
+  const old = { cycle_duration: 2.2, loops: 2, layer: [layer(3), layer(4, "kick.wav")] };
+  return withPage(savedPage("older", old), "?t=0", async (page) => {
+    const attrs = await page.evaluate(ATTRS);
+    assert.equal(attrs.error, undefined);
+    assert.equal(attrs.audioFingerprint, fnv1a(renderWav(upgradeSpec(old)).wav));
+    assert.match(await page.evaluate("document.getElementById('meta').textContent"), /^2 bars · 109\.09 BPM, 4 beats per bar/);
+  });
+});
+
 test("page: a name that looks like HTML cannot break out of the page", { skip }, () =>
-  withPage(savedPage("</script><b>bold</b>", { loops: 1, layer: [layer(3)] }), "?t=0", async (page) => {
+  withPage(savedPage("</script><b>bold</b>", { bars: 1, layer: [layer(3)] }), "?t=0", async (page) => {
     assert.equal((await page.evaluate(ATTRS)).error, undefined);
     assert.equal(await page.evaluate("document.querySelectorAll('b').length"), 0);
     assert.equal(await page.evaluate("document.getElementById('title').textContent"), "</script><b>bold</b>");
   }));
 
 test("page: six layers still play, but the drawing says why it is missing", { skip }, () => {
-  const spec = { loops: 1, layer: [2, 3, 4, 5, 6, 7].map((b) => layer(b)) };
+  const spec = { bars: 1, layer: [2, 3, 4, 5, 6, 7].map((b) => layer(b)) };
   return withPage(savedPage("six", spec), "?t=0", async (page) => {
     const attrs = await page.evaluate(ATTRS);
     assert.equal(attrs.error, undefined);
@@ -106,7 +117,7 @@ test("page: six layers still play, but the drawing says why it is missing", { sk
 });
 
 test("page: a piece it cannot use gets a message, not a crash", { skip }, () =>
-  withPage(savedPage("typo", { loops: 1, layer: [layer(3, "kik.wav")] }), "?t=0", async (page) => {
+  withPage(savedPage("typo", { bars: 1, layer: [layer(3, "kik.wav")] }), "?t=0", async (page) => {
     assert.equal((await page.evaluate(ATTRS)).error, undefined);
     assert.equal(await page.evaluate("document.getElementById('message').className"), "message error");
     assert.match(await page.evaluate("document.getElementById('message').textContent"), /unknown sample kik\.wav/);

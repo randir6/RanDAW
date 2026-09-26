@@ -3,7 +3,7 @@
 // A saved piece has two halves:
 //
 //   {
-//     "format": "randaw-piece", "version": 1,
+//     "format": "randaw-piece", "version": 2,
 //     "spec":    { ... },   what the user wrote -- loads back in
 //     "derived": { ... },   everything worked out from it -- timing, the grid
 //   }
@@ -13,8 +13,8 @@
 // never repeats a musical rule.
 //
 // Numbering rule inside `derived`: counts a musician would say out loud --
-// cycle 1, beat 3 -- start at 1, matching how beats and degrees are written
-// everywhere else. Positions in a list -- `layer`, `step` -- start at 0,
+// bar 1, beat 3 -- start at 1, matching how beats and degrees are written
+// everywhere else. Places in a list -- `layer`, `position` -- start at 0,
 // because they index the lists beside them.
 //
 // The key names are snake_case because this is a data format, and it stayed
@@ -43,8 +43,8 @@ function isPercussive(layer) {
 }
 
 // What to print at one position, in the user's own notation.
-function label(layer, step, percussive) {
-  const value = layer.written[step];
+function label(layer, position, percussive) {
+  const value = layer.written[position];
   if (value === null) return "-";
   if (percussive) return "x";
   return String(value);
@@ -59,6 +59,7 @@ export function pieceToDerived(piece) {
       name: sampleStem(layer.sample),
       sample: layer.sample.slice(layer.sample.lastIndexOf("/") + 1),
       beats: layer.beats,
+      over: layer.over,
       gain: layer.gain,
       pitch_kind: layer.pitchKind,
       percussive,
@@ -66,7 +67,7 @@ export function pieceToDerived(piece) {
       root: layer.root,
       sequence: layer.written.map((w) => (w === null ? "-" : w)),
       // The same sequence as a display should print it: drums as x.
-      sequence_labels: layer.written.map((_, step) => label(layer, step, percussive)),
+      sequence_labels: layer.written.map((_, position) => label(layer, position, percussive)),
       // Back to 1-based for anything a person reads. Sets have no order, so
       // sort them -- and sort needs telling to compare as numbers, because by
       // default JavaScript sorts everything as text, putting 10 before 9.
@@ -83,13 +84,14 @@ export function pieceToDerived(piece) {
       // Whether it sounds, once every layer's mute and solo are taken into
       // account. A silent layer is still drawn, faded.
       audible: piece.audible[index],
-      // How many cycles until this layer's pattern comes back round. The
-      // sequence restarts every (length) beats and the cycle every (beats)
-      // beats; both line up again after lcm(length, beats) beats. A sequence
-      // as long as the beat count repeats every cycle; 7 steps on 5 beats
-      // takes 7 cycles. (Switched-off beats are the same every cycle, so they
+      // How many bars until this layer's pattern comes back round. The
+      // sequence restarts every (length) beats and the layer's span every
+      // (beats) beats; both line up again after lcm(length, beats) beats,
+      // which is that many spans of `over` bars each. A sequence as long as
+      // the beat count repeats every span; 7 positions on 5 beats over 1 bar
+      // takes 7 bars. (Switched-off beats are the same every span, so they
       // never lengthen this.)
-      repeat_cycles: lcm(layer.notes.length, layer.beats) / layer.beats,
+      repeat_bars: (lcm(layer.notes.length, layer.beats) / layer.beats) * layer.over,
     };
   });
 
@@ -97,7 +99,13 @@ export function pieceToDerived(piece) {
   // Which layers sound at each pulse. A Map is a dictionary whose keys can be
   // anything -- here, numbers -- and which remembers the order keys arrived.
   const notesAtPulse = new Map();
-  for (const cell of grid(piece.layers, piece.loops)) {
+  const perBar = piece.pulsesPerBar;
+  // How far through its bar a pulse falls, 0 to just under 1. A display lays
+  // each bar out across the same width, so this and the bar number are all it
+  // needs to place a beat -- and it is identical for beats in different
+  // layers that land at the same instant.
+  const offset = (pulse) => roundTo((pulse % perBar) / perBar, PLACES);
+  for (const cell of grid(piece)) {
     const info = layersInfo[cell.layer];
     const low = info.pitch_low, high = info.pitch_high;
     const height = info.percussive || cell.semitones === null || high === low
@@ -106,19 +114,15 @@ export function pieceToDerived(piece) {
 
     cells.push({
       layer: cell.layer,
-      cycle: cell.cycle + 1,
+      bar: cell.bar + 1,
       beat: cell.beat + 1,
-      step: cell.step,
+      position: cell.position,
       pulse: cell.pulse,
       time: roundTo(cell.pulse * piece.pulseDuration, PLACES),
-      // How far through its cycle this beat falls, 0 to just under 1. A
-      // display lays each cycle out across the same width, so this is all it
-      // needs to place the beat -- and it is identical for beats in different
-      // layers that land at the same instant.
-      offset: roundTo(cell.beat / piece.layers[cell.layer].beats, PLACES),
+      offset: offset(cell.pulse),
       status: cell.status,
       semitones: cell.semitones,
-      label: label(piece.layers[cell.layer], cell.step, info.percussive),
+      label: label(piece.layers[cell.layer], cell.position, info.percussive),
       height: roundTo(height, PLACES),
     });
     // Only layers you can hear count towards "sounding together".
@@ -131,28 +135,32 @@ export function pieceToDerived(piece) {
   // Instants where two or more layers sound together. Worked out here so the
   // display can simply draw them, and so the rule for what counts as
   // "together" (exactly the same pulse) lives with the other rules.
-  const lcmBeats = piece.lcmBeats;
   const coincidences = [...notesAtPulse.entries()]
     .filter(([, layers]) => layers.size >= 2)
     .sort(([a], [b]) => a - b)
     .map(([pulse, layers]) => ({
       pulse,
       time: roundTo(pulse * piece.pulseDuration, PLACES),
-      cycle: Math.floor(pulse / lcmBeats) + 1,
-      offset: roundTo((pulse % lcmBeats) / lcmBeats, PLACES),
+      bar: Math.floor(pulse / perBar) + 1,
+      offset: offset(pulse),
       layers: [...layers].sort((a, b) => a - b),
     }));
 
   return {
-    // How many cycles until the whole piece comes back round: the point where
+    tempo: roundTo(piece.tempo, PLACES),
+    base: piece.base,
+    click: piece.click,
+    bars: piece.bars,
+    // How many bars until the whole piece comes back round: the point where
     // every layer's pattern has repeated a whole number of times.
-    repeat_cycles: layersInfo.reduce((running, l) => lcm(running, l.repeat_cycles), 1),
+    repeat_bars: layersInfo.reduce((running, l) => lcm(running, l.repeat_bars), 1),
+    bar_duration: roundTo(piece.barDuration, 9),
     sample_rate: piece.sampleRate,
-    loops: piece.loops,
-    lcm: lcmBeats,
+    // The engine's own grid, for anyone checking the arithmetic. Nobody
+    // composes in pulses.
+    pulses_per_bar: perBar,
     samples_per_pulse: piece.samplesPerPulse,
     pulse_duration: roundTo(piece.pulseDuration, 9),
-    cycle_duration: roundTo(piece.cycleDuration, 9),
     total_duration: roundTo(piece.totalDuration, 9),
     warnings: [...piece.warnings],
     layers: layersInfo,

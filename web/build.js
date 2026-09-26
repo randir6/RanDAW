@@ -42,13 +42,14 @@ const ENTRY = "main.js";
 const EXAMPLE_NOTES = {
   tresillo: "3-3-2 groove with a 3-beat hat cutting across it",
   seven: "7 grouped 3-2-2, with a 4-beat tom pulling against it",
-  phase_study: "5 beats against 7 notes, 7 cycles to come back round",
+  spans: "7 and 13 beats, each spread over 2 bars of 4",
+  phase_study: "5 beats against 7 notes, 7 bars to come back round",
   sparse_dub: "space rather than density",
   scales: "change one word and the whole piece re-harmonises",
   rests: "rests that travel through the bar",
 };
 // The order the menu lists them in; the first opens by default.
-const EXAMPLE_ORDER = ["tresillo", "rests", "seven", "phase_study", "sparse_dub", "scales"];
+const EXAMPLE_ORDER = ["tresillo", "rests", "seven", "spans", "phase_study", "sparse_dub", "scales"];
 
 const IMPORT = /^import\s*\{([^}]*)\}\s*from\s*"\.\/([\w-]+\.js)";[^\S\n]*\n?/gm;
 const EXPORT = /^export\s+(?:async\s+)?(?:function\*?|const|let|class)\s+([A-Za-z_$][\w$]*)/gm;

@@ -1,6 +1,7 @@
 {
-  "cycle_duration": 2,
-  "loops": 8,
+  "tempo": 120,
+  "base": 4,
+  "bars": 8,
   "layer": [
     {"beats": 8, "notes": [0], "sample": "kick.wav", "gain": 0.75, "active": [1, 4, 7]},
     {"beats": 8, "notes": [0], "sample": "snare.wav", "gain": 0.42, "active": [5]},

@@ -125,8 +125,10 @@
   .l3 { --c: var(--s4); } .l4 { --c: var(--s5); }
 
   .row-bg { fill: var(--row); }
-  .cycle-label { fill: var(--ink-3); font-size: 13px; }
+  .bar-label { fill: var(--ink-3); font-size: 13px; }
   .bar-line { stroke: var(--bar); stroke-width: 1.5; }
+  /* The base beats inside each bar: there to count by, not to read. */
+  .base-line { stroke: var(--bar); stroke-width: 1; stroke-dasharray: 2 5; stroke-opacity: .7; }
   .name { fill: var(--ink); font-size: 16px; font-weight: 650; }
   .sub { fill: var(--ink-2); font-size: 12.5px; }
   .swatch { fill: var(--c); }
@@ -167,12 +169,12 @@
   .stage [data-beat] { cursor: pointer; }
   .ruler { fill: var(--row); cursor: pointer; }
   .ruler:hover { fill: var(--grid); }
-  .cycle-label { pointer-events: none; }
+  .bar-label, .base-line { pointer-events: none; }
   /* A layer that cannot be heard (muted, or another layer is soloed) is
      still drawn, faded, and its name says why. */
   .silent .band, .silent .mark, .silent .rest-glyph { opacity: .3; }
   .state { fill: var(--ink-3); font-size: 12.5px; font-weight: 500; }
-  /* Every place the selected sequence step lands. */
+  /* Every place the selected sequence position lands. */
   .band.picked { stroke: var(--ink-2); stroke-width: 1.5; stroke-dasharray: none; }
   .mark.picked circle { stroke: var(--ink); stroke-width: 3; }
   .hit.picked line { stroke-width: 5; }
@@ -211,13 +213,13 @@
     border-left: 6px solid var(--c); display: grid; gap: 8px;
   }
   .card.silent { opacity: .65; }
-  .card-head, .steps, .keypad { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .card-head, .sequence-row, .keypad { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .card .swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
   .switches { display: inline-flex; gap: 6px; }
   .toggle { min-width: 40px; font-weight: 700; }
   .toggle[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
   .remove { color: var(--error); }
-  /* One tile per step of the sequence. */
+  /* One tile per position of the sequence. */
   .tile {
     min-width: 40px; padding: 6px 8px; font-weight: 650; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--c) 18%, var(--surface));
@@ -283,10 +285,10 @@
 <div class="bar">
   <button id="play" type="button">Play</button>
   <span class="clock" id="clock"></span>
-  <span class="pending" id="pending" hidden>↻ change comes in at the next cycle</span>
-  <button id="prev" type="button" aria-label="Earlier cycles">&larr;</button>
+  <span class="pending" id="pending" hidden>↻ change comes in at the next bar</span>
+  <button id="prev" type="button" aria-label="Earlier bars">&larr;</button>
   <span class="window" id="window"></span>
-  <button id="next" type="button" aria-label="Later cycles">&rarr;</button>
+  <button id="next" type="button" aria-label="Later bars">&rarr;</button>
   <span class="hint" id="hint">Tap a beat to switch it off or on · tap the strip along the top to jump · space plays</span>
 </div>
 
@@ -304,7 +306,7 @@
   <span><svg viewBox="0 0 22 16"><circle cx="11" cy="8" r="6.5" fill="var(--ink-2)"/></svg>note — higher in the row is higher in pitch</span>
   <span><svg viewBox="0 0 22 16"><path d="M6 3 L16 13 M16 3 L6 13" stroke="var(--ink-2)" stroke-width="3" stroke-linecap="round"/></svg>drum hit</span>
   <span><svg viewBox="0 0 22 16"><rect x="5" y="6" width="12" height="5" rx="1" fill="var(--ink-2)"/></svg>rest — moves with the sequence</span>
-  <span><svg viewBox="0 0 22 16"><rect x="2" y="1" width="18" height="14" rx="3" fill="url(#hatch)" stroke="var(--muted)" stroke-opacity=".5"/></svg>beat switched off — same place every cycle</span>
+  <span><svg viewBox="0 0 22 16"><rect x="2" y="1" width="18" height="14" rx="3" fill="url(#hatch)" stroke="var(--muted)" stroke-opacity=".5"/></svg>beat switched off — the same beat every time round</span>
   <span><svg viewBox="0 0 22 16"><line x1="11" y1="1" x2="11" y2="15" stroke="var(--ink-2)" stroke-width="2"/></svg>layers sounding together</span>
 </div>
 

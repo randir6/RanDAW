@@ -42,17 +42,20 @@ function randomEdit(spec, rand) {
   const i = int(0, spec.layer.length - 1);
   const layer = spec.layer[i];
   const seq = layer[edit.sequenceKey(layer)];
-  const step = int(0, seq.length - 1);
+  const position = int(0, seq.length - 1);
   return pick([
-    () => edit.setSetting(spec, "loops", int(1, 8)),
-    () => edit.setSetting(spec, "cycle_duration", pick([0.5, 1, 1.7, 2.2, 3])),
+    () => edit.setSetting(spec, "bars", int(1, 8)),
+    () => edit.setSetting(spec, "tempo", pick([40, 90, 97.5, 120, 150, 300])),
+    () => edit.setSetting(spec, "base", int(1, 9)),
+    () => edit.setSetting(spec, "click", pick([null, true])),
     () => edit.setSetting(spec, "scale", pick([null, ...SCALE_NAMES])),
     () => edit.setSetting(spec, "root", pick([null, -7, 3, 12])),
     () => edit.setBeats(spec, i, int(1, 16)),
+    () => edit.setOver(spec, i, int(1, 4)),
     () => edit.toggleBeat(spec, i, int(1, layer.beats)),
-    () => edit.setStep(spec, i, step, rand() < 0.2 ? REST : int(-12, 14)),
-    () => edit.insertStep(spec, i, step),
-    () => edit.removeStep(spec, i, step),
+    () => edit.setPosition(spec, i, position, rand() < 0.2 ? REST : int(-12, 14)),
+    () => edit.insertPosition(spec, i, position),
+    () => edit.removePosition(spec, i, position),
     () => edit.setLayer(spec, i, "sample", pick(SAMPLES)),
     () => edit.setLayer(spec, i, "gain", Math.round(rand() * 150) / 100),
     () => edit.setLayer(spec, i, "scale", pick([null, ...SCALE_NAMES])),
@@ -66,9 +69,11 @@ function randomEdit(spec, rand) {
 
 function checkInvariants(spec, piece) {
   const d = pieceToDerived(piece);
-  // One cell per layer per cycle per beat, in time order.
-  const beats = piece.layers.reduce((sum, l) => sum + l.beats, 0);
-  assert.equal(d.cells.length, beats * piece.loops);
+  // One cell per beat of each layer, in time order. A layer over several
+  // bars has beats / over of them in each bar, and stops at the end of the
+  // piece even part-way through a span.
+  const beats = piece.layers.reduce((sum, l) => sum + Math.ceil((piece.bars * l.beats) / l.over), 0);
+  assert.equal(d.cells.length, beats);
   for (let k = 1; k < d.cells.length; k++) {
     const [a, b] = [d.cells[k - 1], d.cells[k]];
     assert.ok(a.pulse < b.pulse || (a.pulse === b.pulse && a.layer < b.layer), "cells out of order");
@@ -76,8 +81,11 @@ function checkInvariants(spec, piece) {
   for (const c of d.cells) {
     assert.ok(c.height >= 0 && c.height <= 1, `height ${c.height} outside its row`);
     assert.ok(c.offset >= 0 && c.offset < 1, `offset ${c.offset}`);
-    assert.ok(c.cycle >= 1 && c.cycle <= piece.loops);
+    assert.ok(c.bar >= 1 && c.bar <= piece.bars);
+    assert.ok(c.beat >= 1 && c.beat <= piece.layers[c.layer].beats);
   }
+  // Every base beat lands exactly on the grid, so the click can sound there.
+  assert.equal(piece.pulsesPerBar % piece.base, 0);
   // "Sounding together" means two or more AUDIBLE layers with a note there.
   for (const k of d.coincidences) {
     assert.ok(k.layers.length >= 2);
@@ -91,7 +99,7 @@ function checkInvariants(spec, piece) {
 }
 
 test("random edits never crash, and every accepted piece keeps its invariants", () => {
-  const names = ["tresillo", "rests", "seven", "phase_study", "sparse_dub", "scales"];
+  const names = ["tresillo", "rests", "seven", "spans", "phase_study", "sparse_dub", "scales"];
   let accepted = 0;
   let refused = 0;
   for (let run = 0; run < 60; run++) {

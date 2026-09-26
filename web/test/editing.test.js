@@ -251,6 +251,25 @@ test("editing: while playing, an edit waits for the next bar and playback carrie
     assert.equal((await page.evaluate("({ ...document.documentElement.dataset })")).error, undefined);
   }));
 
+test("editing: the drawing waits for sound to reach the speakers", { skip }, () =>
+  editing("tresillo", async (page) => {
+    // Pretend the speakers are 300 ms away, as Bluetooth headphones often
+    // are: the browser reports that as the context's outputLatency.
+    await page.evaluate(`Object.defineProperty((window.AudioContext || window.webkitAudioContext).prototype,
+      "outputLatency", { get: () => 0.3 }), true`);
+    await click(page, "#play");
+    await page.waitFor("document.getElementById('play').textContent === 'Pause'");
+    const started = Date.now();
+    await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 0.5");
+    // Sound sent at time 0 is heard 0.3 s later, so the drawing reaches 0.5 s
+    // at about 0.8 s of real time, not 0.5.
+    const waited = (Date.now() - started) / 1000;
+    assert.ok(waited > 0.7, `the drawing reached 0.5 s after only ${waited} s`);
+    assert.match(await page.evaluate("document.getElementById('latency').textContent"),
+      /drawing delayed 3\d\d ms to match your speakers/);
+    assert.equal(await page.evaluate("document.getElementById('latency').hidden"), false);
+  }));
+
 test("editing: jumping while playing carries on playing from the new place", { skip }, () =>
   editing("tresillo", async (page) => {
     await click(page, "#play");

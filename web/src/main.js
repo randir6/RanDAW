@@ -357,6 +357,12 @@ function refresh() {
   $("clock").textContent = `${t.toFixed(2)} / ${totalDuration.toFixed(2)} s`;
   $("play").textContent = player.isPlaying() ? "Pause" : "Play";
   $("pending").hidden = !player.isSwapPending();
+  // The drawing runs this far behind the audio being sent, to stay in step
+  // with what you hear (see player.js). Said on the page when it is enough
+  // to notice, so it is clear the delay is being allowed for.
+  const delay = Math.round(player.latency() * 1000);
+  $("latency").hidden = !(player.isPlaying() && delay >= 20);
+  $("latency").textContent = `drawing delayed ${delay} ms to match your speakers`;
 }
 
 // Called by the browser before each screen refresh, about 60 times a second,

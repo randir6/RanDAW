@@ -9,6 +9,13 @@
 // playback is. The drawing asks where playback is before each screen refresh
 // and follows it, so picture and sound cannot drift apart.
 //
+// But the clock says when sound LEAVES the page, not when it reaches your
+// ears. Between the two sit the browser's audio buffers, the operating
+// system, and the speakers or headphones -- a few milliseconds on a laptop's
+// own speakers, often 150-250 ms over Bluetooth. So there are two positions:
+// the CLOCK position, used to plan when an edit comes in, and the HEARD
+// position (the clock minus that delay), which is what the drawing shows.
+//
 // Positions are counted in BARS (2.5 = halfway through the third bar)
 // rather than seconds, because an edit can change how long a bar is. The
 // bar count is what carries over when one version of a piece replaces
@@ -43,8 +50,9 @@ export function planSwap(now, current, next) {
 export function createPlayer() {
   let ctx = null;        // the AudioContext, made on first use
   let latest = null;     // the newest audio: { samples, sampleRate, bar, bars, buffer }
-  let sounding = null;   // what is playing: { track, source, gain, startedAt }
+  let sounding = null;   // what is playing: { track, source, gain, startedAt, activeAt }
   let pending = null;    // an edit waiting for the next bar: same shape, plus activeAt
+  let previous = null;   // what was sounding before, still being HEARD for a moment
   let playing = false;
   let heldAt = 0;        // where playback is while stopped, in bars
 
@@ -109,21 +117,53 @@ export function createPlayer() {
     return { track, source, gain, startedAt: at - offset };
   }
 
-  // If a waiting edit's moment has come, it is now what is sounding.
+  // If a waiting edit's moment has come, it is now what is sounding. The one
+  // it replaced is kept as `previous`: it has stopped being sent, but its
+  // last moments are still on their way to your ears.
   function promote() {
     if (pending !== null && ctx.currentTime >= pending.activeAt) {
+      previous = sounding;
       sounding = pending;
       pending = null;
     }
   }
 
-  // Where playback is, in bars, counted in whatever is actually sounding.
+  // How far behind the clock the sound you hear is, in seconds, as the
+  // browser reports it. baseLatency is the browser's own buffering;
+  // outputLatency the rest of the way to the speakers. A browser that does
+  // not report one gives undefined, and `|| 0` counts that as no delay. Read
+  // afresh each time, since it changes when headphones are plugged in.
+  function latency() {
+    return ctx === null ? 0 : (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  }
+
+  // A track's position, in bars, at audio-clock time `time`.
+  function positionAt({ track, startedAt }, time) {
+    const seconds = (time - startedAt) % (track.bar * track.bars);
+    return Math.max(0, seconds) / track.bar;
+  }
+
+  // Where playback is on the audio clock: what is being sent out now.
+  // What an edit's timing is planned against.
+  function clockPosition() {
+    promote();
+    return positionAt(sounding, ctx.currentTime);
+  }
+
+  // Where playback is as you HEAR it, in bars: the clock, less the delay on
+  // the way to your ears. What the drawing follows.
+  //
+  // Just after an edit comes in, the old version is still what you hear, so
+  // it is counted in that. Just after Play or a jump there is nothing to hear
+  // yet, so the position waits where it will start rather than running
+  // backwards.
   function barPosition() {
     if (!playing) return heldAt;
     promote();
-    const { track, startedAt } = sounding;
-    const seconds = (ctx.currentTime - startedAt) % (track.bar * track.bars);
-    return Math.max(0, seconds) / track.bar;
+    const heard = ctx.currentTime - latency();
+    if (heard >= sounding.activeAt) return positionAt(sounding, heard);
+    if (previous !== null) return positionAt(previous, heard);
+    return positionAt(sounding, sounding.activeAt);
   }
 
   // Hand over the audio of a newly opened piece. Playback stops and goes back
@@ -155,7 +195,7 @@ export function createPlayer() {
       pending = null;
     }
     const now = ctx.currentTime;
-    const { wait, startBar } = planSwap(barPosition(), sounding.track, next);
+    const { wait, startBar } = planSwap(clockPosition(), sounding.track, next);
     const at = now + wait;
     // The old version plays at full volume up to the boundary, then fades.
     // Earlier fades planned for it are cancelled first.
@@ -184,8 +224,8 @@ export function createPlayer() {
       starting = false;
     }
     const from = (Math.floor(heldAt) % latest.bars) + (heldAt % 1);
-    sounding = startTrack(latest, ctx.currentTime, from);
-    pending = null;
+    sounding = { ...startTrack(latest, ctx.currentTime, from), activeAt: ctx.currentTime };
+    pending = previous = null;
     playing = true;
   }
 
@@ -196,7 +236,7 @@ export function createPlayer() {
       if (t === null) continue;
       t.source.stop();
     }
-    sounding = pending = null;
+    sounding = pending = previous = null;
     playing = false;
     silence?.pause();  // ?. -- only if it was ever made
   }
@@ -213,8 +253,8 @@ export function createPlayer() {
       return;
     }
     for (const t of [sounding, pending]) if (t !== null) t.source.stop();
-    pending = null;
-    sounding = startTrack(latest, ctx.currentTime, target);
+    pending = previous = null;
+    sounding = { ...startTrack(latest, ctx.currentTime, target), activeAt: ctx.currentTime };
   }
 
   return {
@@ -225,7 +265,13 @@ export function createPlayer() {
     seek,
     barPosition,
     isPlaying: () => playing,
-    // True while an edit is waiting for the next bar to come in.
-    isSwapPending: () => pending !== null && ctx !== null && ctx.currentTime < pending.activeAt,
+    // True from an edit until you hear it come in at the next bar.
+    isSwapPending: () => {
+      if (!playing) return false;
+      promote();
+      return pending !== null || (previous !== null && ctx.currentTime - latency() < sounding.activeAt);
+    },
+    // The delay between sending sound and hearing it, in seconds.
+    latency,
   };
 }

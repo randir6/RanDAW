@@ -250,6 +250,7 @@
   .keypad button { min-width: 44px; }
   .keypad .on { background: var(--ink); color: var(--page); border-color: var(--ink); }
   .pending { color: var(--warn); font-size: 13px; }
+  .latency { color: var(--ink-3); font-size: 13px; }
   .repeat { color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
   .repeat.uneven { color: var(--warn); }
 
@@ -285,6 +286,7 @@
 <div class="bar">
   <button id="play" type="button">Play</button>
   <span class="clock" id="clock"></span>
+  <span class="latency" id="latency" hidden></span>
   <span class="pending" id="pending" hidden>↻ change comes in at the next bar</span>
   <button id="prev" type="button" aria-label="Earlier bars">&larr;</button>
   <span class="window" id="window"></span>

@@ -361,6 +361,18 @@ Design notes from thinking it through, so the work does not start cold:
 - **Length suggestions round up** to the next whole number of repeats, so
   following one never shortens a piece unexpectedly.
 
+- **The drawing follows what you hear, not what is sent.** The audio clock
+  says when sound leaves the page; Bluetooth headphones can add 150-250 ms
+  before it is heard, which made sharp hits look late against the playhead.
+  The drawing runs behind the clock by the delay the browser reports
+  (`outputLatency` + `baseLatency`), and says so on the page when it is 20 ms
+  or more. Edits are still planned on the clock itself. If a browser does not
+  report the delay, nothing is allowed for -- a manual setting would be the
+  fallback if that turns out to happen on the iPad.
+- **Not a sample problem.** Measured before fixing: every built-in sample is
+  at full level within a few ms (snare and hat within 1), and every hit in a
+  rendered file lands within 0.02 ms of its time.
+
 ### Phase 12: tempo, base and bars
 
 - **One vocabulary, everywhere.** Tempo, base, bar, beat, over, sequence and

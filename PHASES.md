@@ -594,6 +594,30 @@ click and spans too.
 
 ---
 
+## After phase 12: sounds, timing and drawings
+
+- **Two warmer melody sounds**, keys (a soft electric piano) and marimba,
+  tuned to A like the pluck. `scales` and `spans` use them.
+- **"The snare sounds late"** turned out not to be the sound: every sample
+  hits within a few ms and every beat lands within 0.02 ms of its time. The
+  drawing followed the moment sound was *sent*, and Bluetooth headphones add
+  150-250 ms before it is *heard*. The drawing now runs behind by the delay
+  the browser reports, and says so on the page. Still to confirm on the
+  iPad/iPhone that Safari reports it.
+- **Three drawings:** Grid, Rings (a ring per layer, round like a clock) and
+  Polygons (each layer's beats joined into a shape; switched-off beats bend
+  it). Shared code in `drawing.js` and `clock.js`.
+- **The browser checks cannot hang any more:** every request to Chrome
+  fails after 60 s instead of waiting for ever (one run hung under load).
+- **Checks:** 107.
+
+**Parked here** (26 September 2026). What is waiting on decisions, in order,
+is in README.md under "Where things stand". The recommended next step is
+exact loop length (see NOTES.md, "The file is not exactly the tempo's
+length"), then sections.
+
+---
+
 ## Phase 13 — Sections (from the backlog)
 
 Variations across bars: same polyrhythmic base, different active beats,

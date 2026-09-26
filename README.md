@@ -302,30 +302,77 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 ## Where things stand
 
-Phases 1–12 are done: N layers, the schedule/audio split, beat skipping,
-scales, rests, the spec/Piece split, JSON export, a visualiser that plays in
-time with its drawing, the whole engine in one self-contained web page that
-runs on a laptop, iPad or phone, live editing in that page with mute, solo
-and undo — and (12) tempo, base and bars, with layers that span several bars
-and an optional click.
+**Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
+is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
+(not merged, no pull request). All 107 checks pass.
 
-Sections (variation across bars), drift, effects and MIDI are still ahead.
-See `PHASES.md`.
+### What works
 
-**Things worth knowing before picking up:**
+- **The whole program is one web page** (`web/dist/randaw.html`, built by
+  `node web/build.js`). It runs offline on a laptop, iPad or phone, and
+  "Save page" makes a copy with your piece inside that you can email.
+- **Composing:** layers with their own beat counts, spread over one or more
+  bars; notes or scale degrees; rests; beats switched on and off; mute, solo,
+  gain; tempo, base (beats per bar), length in bars, and an optional click.
+- **Editing live** in the page while it plays, with undo and redo; each
+  change comes in at the start of the next bar. The piece survives a reload.
+- **Three drawings**, switched with Grid | Rings | Polygons, all tappable.
+  The drawing allows for the delay of Bluetooth speakers and headphones
+  where the browser reports it.
+- **Output:** a WAV that loops seamlessly, and the piece as a small `.json`.
+- **Sounds:** synthetic kick, snare, hat, tom; pluck, keys and marimba (all
+  in A) and bell (E) for melodies; the click.
+
+### Waiting on your decisions
+
+In rough order of how much they matter:
+
+1. **Exact loop length.** A file is the tempo's length only to within a few
+   milliseconds per bar (8 bars of `spans` come out 15 ms long), so a loop
+   can drift against a DAW at the same tempo. The fix is known and small-ish
+   -- place each beat at its exact fraction of the bar -- and is written up
+   in `NOTES.md`. Recommended next piece of work.
+2. **Did the drawing-delay fix work on your headphones?** While playing, a
+   note beside the clock should say "drawing delayed N ms to match your
+   speakers". If it never appears on the iPad/iPhone, the browser there does
+   not report the delay, and a manual setting would be the fallback.
+3. **Rest behaviour** -- rests travel with the sequence; should they, always?
+   See Open questions in `NOTES.md`.
+4. **Sections** (phase 13): variation across bars, e.g. four 4-bar sections
+   in a 16-bar file. The words are settled now; the design notes are in
+   `NOTES.md`.
+5. **Your own samples** in the page -- where they are kept, how big, whether
+   "Save page" carries them. Real recordings would also want leading silence
+   trimmed automatically, and maybe a per-layer nudge for feel.
+6. **Hosting**, so the iPad can open the page from an address. Deliberately
+   later.
+7. Small ones: the `rests` example is 6 bars of a pattern that repeats every
+   21 (the page offers "Use 21 bars"); more drawings were floated (a
+   scrolling timeline like a DAW's arrangement view).
+
+### Picking it up again
+
+```bash
+git checkout claude/polyrhythm-vision-setup-jfos3r
+cd web
+node build.js      # -> dist/randaw.html; open it in a browser
+npm test           # 107 checks; the browser ones need Chromium (CHROMIUM=path)
+```
+
+Then read `PHASES.md` from "Phase 12" down, and the Open questions and
+backlog in `NOTES.md`. Nothing needs installing but Node; Python is only for
+remaking the built-in sounds (`make_samples.py`).
+
+**Things worth knowing:**
 
 1. **The page is tested in Chromium; Safari only by hand.** It has played on
    an iPhone. The audio fingerprint under "The grid as text" should read the
    same on every device for the same piece.
-2. **Rest behaviour is under question** — see Open questions at the top of
-   `NOTES.md`. The `rests` example is the quickest way in.
-3. **A file is the tempo's length only to within a few milliseconds per
-   bar**, so a loop can drift against a DAW at the same tempo. The fix is
-   written up in `NOTES.md`; it is the top candidate for the next piece of
-   work, ahead of sections (the largest musical gap).
-4. **Nobody has run this with real samples yet.** Everything so far is
+2. **Nobody has run this with real samples yet.** Everything so far is
    verified against synthetic one-shots, which proves the maths but not the
    music.
+3. **Older saved pieces still open** (the words changed in phase 12); the
+   page upgrades them as it opens them.
 
 ## Checking nothing is broken
 

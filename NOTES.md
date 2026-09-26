@@ -89,6 +89,18 @@ The same fix as above removes this limit too.
 
 ## Open questions
 
+*Status when parked (26 September 2026): none of these is decided. The
+drawing-delay question below is the newest and the quickest to answer.*
+
+### Does Safari report the speaker delay?
+
+The drawing now allows for the delay between sending sound and hearing it
+(see Decisions). It relies on the browser reporting it; Chrome does, and on
+Bluetooth it can be 150-250 ms. Whether Safari on the iPad and iPhone does
+is untested. Check: play with headphones and look for "drawing delayed N ms
+to match your speakers" beside the clock. If it never appears there, add a
+manual delay setting.
+
 ### Rest behaviour may not be right — revisit first
 
 Flagged at the end of the first session, unresolved and deliberately not

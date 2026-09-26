@@ -131,3 +131,43 @@ export function barsLabel(first, perPage, total) {
   const span = first === last ? `bar ${first}` : `bars ${first}–${last}`;
   return perPage >= total ? span : `${span} of ${total}`;
 }
+
+// One beat's mark, centred at (x, y) with radius r, inside `g`: a note (a
+// circle with its label), a drum hit (an x), or a rest (a short bar).
+// `tappable` is the data-layer/data-beat pair that makes it answer taps;
+// `where` begins its tooltip. Returns the mark, or null for a switched-off
+// beat, which has no mark.
+export function drawMark(g, info, c, x, y, r, tappable, where) {
+  if (c.status === "note") {
+    const m = el("g", { class: info.percussive ? "mark hit" : "mark note", ...tappable }, g);
+    if (info.percussive) {
+      const s = r * 0.62;
+      el("circle", { cx: x, cy: y, r }, m);  // invisible, but easier to hover
+      el("line", { x1: x - s, y1: y - s, x2: x + s, y2: y + s }, m);
+      el("line", { x1: x - s, y1: y + s, x2: x + s, y2: y - s }, m);
+    } else {
+      el("circle", { cx: x, cy: y, r }, m);
+      el("text", { x, y: y + 0.5, "font-size": Math.min(14, r * 1.05) }, m, c.label);
+    }
+    tip(m, `${where} · ${pitchWords(info, c)}`);
+    return m;
+  }
+  if (c.status === "rest") {
+    const rest = el("rect", { x: x - 6, y: y - 3, width: 12, height: 6, rx: 1, class: "rest-glyph", ...tappable }, g);
+    tip(rest, `${where} · rest`);
+    return rest;
+  }
+  return null;
+}
+
+// Where a tooltip says a beat is: "kick · bar 2, beat 3 of 8 · 2.75 s".
+export const whereWords = (info, c) =>
+  `${info.name} · bar ${c.bar}, beat ${c.beat} of ${info.beats} · ${c.time.toFixed(2)} s`;
+
+// Outline everything belonging to the picked sequence position. `placed` is
+// [{ layer, position, node }]; `picked` is { layer, position } or null.
+export function showPicked(placed, picked) {
+  for (const { layer, position, node } of placed) {
+    node.classList.toggle("picked", picked !== null && picked.layer === layer && picked.position === position);
+  }
+}

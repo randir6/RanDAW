@@ -243,6 +243,18 @@ test("editing: the rings drawing edits like the grid, and is remembered", { skip
     }
   }));
 
+test("editing: in polygons, tapping an empty corner switches that beat on", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await click(page, "#mode-polygons");
+    // The kick's beat 2 is switched off: an empty corner of its octagon.
+    assert.ok(await page.evaluate("document.querySelectorAll('#stage .poly-heard').length") >= 3);
+    await tap(page, '.poly-off[data-layer="0"][data-beat="2"]');
+    assert.equal(await fingerprint(page), print(toggleBeat(example("tresillo"), 0, 2)));
+    // Now sounding, it has a mark instead of an empty corner.
+    assert.equal(await page.evaluate(`document.querySelectorAll('.poly-off[data-layer="0"][data-beat="2"]').length`), 0);
+    await page.evaluate("document.getElementById('mode-grid').click(), true");
+  }));
+
 test("editing: the piece survives a reload", { skip }, () =>
   editing("tresillo", async (page) => {
     const spec = toggleBeat(example("tresillo"), 1, 1);

@@ -177,6 +177,15 @@
   .ring-bg { fill: none; stroke: var(--row); }
   .ruler-ring { fill: none; stroke: var(--row); cursor: pointer; }
   .ruler-ring:hover { stroke: var(--grid); }
+  /* The polygons drawing (polygons.js): a faint dashed outline through every
+     beat of a layer, a solid lightly filled one through the beats that
+     sound, and an empty corner for each switched-off beat. */
+  .ring-guide { fill: none; stroke: var(--grid); stroke-width: 1.5; }
+  .poly-pulse { fill: none; stroke: var(--c); stroke-opacity: .35; stroke-width: 1.5; stroke-dasharray: 4 5; }
+  .poly-heard { fill: var(--c); fill-opacity: .1; stroke: var(--c); stroke-width: 2.5; stroke-linejoin: round; }
+  .poly-off { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+  .silent .poly-pulse, .silent .poly-heard, .silent .poly-off { opacity: .3; }
+  .poly-off.picked { stroke: var(--ink); stroke-width: 3; }
   .ring-bar-label { text-anchor: middle; dominant-baseline: central; font-size: 12px; }
   .ring-face { fill: var(--row); }
   .ring-face-label {
@@ -236,7 +245,9 @@
   .modes { display: inline-flex; }
   .modes .toggle { font-weight: 600; }
   .modes .toggle:first-child { border-radius: 8px 0 0 8px; }
-  .modes .toggle:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+  .modes .toggle:not(:first-child) { margin-left: -1px; }
+  .modes .toggle:not(:first-child):not(:last-child) { border-radius: 0; }
+  .modes .toggle:last-child { border-radius: 0 8px 8px 0; }
   .remove { color: var(--error); }
   /* One tile per position of the sequence. */
   .tile {
@@ -310,6 +321,7 @@
   <span class="modes" role="group" aria-label="How to draw the piece">
     <button id="mode-grid" type="button" class="toggle" aria-pressed="true">Grid</button>
     <button id="mode-rings" type="button" class="toggle" aria-pressed="false">Rings</button>
+    <button id="mode-polygons" type="button" class="toggle" aria-pressed="false">Polygons</button>
   </span>
   <button id="prev" type="button" aria-label="Earlier bars">&larr;</button>
   <span class="window" id="window"></span>

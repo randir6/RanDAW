@@ -77,16 +77,16 @@ for (const name of examples) {
     }));
 }
 
-for (const name of examples) {
-  test(`page: ${name} draws as rings too, every note of its first turn`, { skip }, () =>
-    withPage(PAGE, `?example=${name}&view=rings&t=0`, async (page) => {
+for (const [name, view] of examples.flatMap((n) => [[n, "rings"], [n, "polygons"]])) {
+  test(`page: ${name} draws as ${view} too, every note of its first turn`, { skip }, () =>
+    withPage(PAGE, `?example=${name}&view=${view}&t=0`, async (page) => {
       const attrs = await page.evaluate(ATTRS);
       assert.equal(attrs.error, undefined, `page error: ${attrs.error}`);
       const { piece } = renderWav(readJson(WEB, "examples", `${name}.json`));
       const turn = Number(attrs.window);
       const expected = pieceToDerived(piece).cells.filter((c) => c.status === "note" && c.bar <= turn).length;
       assert.equal(Number(attrs.notesDrawn), expected);
-      assert.equal(await page.evaluate("document.getElementById('mode-rings').getAttribute('aria-pressed')"), "true");
+      assert.equal(await page.evaluate(`document.getElementById('mode-${view}').getAttribute('aria-pressed')`), "true");
     }));
 }
 

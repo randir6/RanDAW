@@ -369,14 +369,21 @@ Design notes from thinking it through, so the work does not start cold:
   or more. Edits are still planned on the clock itself. If a browser does not
   report the delay, nothing is allowed for -- a manual setting would be the
   fallback if that turns out to happen on the iPad.
-- **Two drawings of the same piece: grid and rings.** Both only draw what
-  `derive.js` worked out, and offer the page the same methods, so switching
-  is one line in `main.js`. What they share is in `drawing.js`. A turn of the
+- **Three drawings of the same piece: grid, rings and polygons.** All only
+  draw what `derive.js` worked out, and offer the page the same methods, so
+  switching is one line in `main.js`. What they all share is in `drawing.js`;
+  the clock face the two round ones share is `clock.js`. A turn of the
   rings is enough bars for every layer's span to come round whole (the lcm of
   their `over`s), capped at 4 bars; the grid instead prefers pages that hold
   spans whole. On a narrow screen the rings stack the names above the circle
   and shrink to fit rather than scroll. The choice is remembered per browser
-  (`randaw-drawing`), or given by `?view=rings`.
+  (`randaw-drawing`), or given by `?view=rings` / `?view=polygons`.
+- **Rings stay concentric, one per layer**, rather than a separate circle per
+  layer: the point is that the same angle is the same instant in every
+  layer, which separate circles would lose. Polygons give each layer its own
+  shape without losing it. Each polygon sits a little inside the last so
+  shared corners stay visible side by side, and shows two outlines -- every
+  beat (the pulse) and only the sounding beats (what you hear).
 - **Not a sample problem.** Measured before fixing: every built-in sample is
   at full level within a few ms (snare and hat within 1), and every hit in a
   rendered file lands within 0.02 ms of its time.

@@ -21,7 +21,7 @@ const ENGINE = [
   "numbers.js", "scales.js", "layer.js", "spec.js", "piece.js", "schedule.js",
   "derive.js", "audio.js", "wav.js", "render.js", "edit.js", "fingerprint.js", "share.js",
 ];
-const PAGE = ["drawing.js", "view.js", "rings.js", "editor.js", "player.js", "draft.js", "files.js", "main.js"];
+const PAGE = ["drawing.js", "clock.js", "view.js", "rings.js", "polygons.js", "editor.js", "player.js", "draft.js", "files.js", "main.js"];
 
 const source = (file) => readFileSync(join(SRC, file), "utf8");
 const importsOf = (file) => [...source(file).matchAll(/from\s+"\.\/([\w-]+\.js)"/g)].map((m) => m[1]);
@@ -51,7 +51,7 @@ test("the engine never touches the browser", () => {
 test("only main.js wires things together; the drawing and player do not import the editor", () => {
   // The drawings may share code with each other (drawing.js), and use the
   // engine, but know nothing of the editor, the player or the page.
-  const DRAWING = ["drawing.js", "view.js", "rings.js"];
+  const DRAWING = ["drawing.js", "clock.js", "view.js", "rings.js", "polygons.js"];
   for (const file of [...DRAWING, "player.js"]) {
     const allowed = file === "player.js" ? ENGINE : [...ENGINE, ...DRAWING];
     for (const dependency of importsOf(file)) {

@@ -18,6 +18,7 @@ import { finishMix, renderAudio } from "./render.js";
 import { schedule } from "./schedule.js";
 import { pageWithPiece } from "./share.js";
 import { formatSpec, readSpec, SpecError, upgradeSpec } from "./spec.js";
+import { createPolygonView } from "./polygons.js";
 import { createRingView } from "./rings.js";
 import { createView, MAX_LAYERS, NARROWEST, WIDEST } from "./view.js";
 import { decodeWav, encodeWav16 } from "./wav.js";
@@ -108,10 +109,11 @@ const voices = new Map();
 const MAX_VOICES = 300;
 let view = null;  // the drawing, or null when the piece has too many layers
 
-// Which drawing: "grid" (rows, view.js) or "rings" (rings.js). ?view=rings in
+// Which drawing: "grid" (rows, view.js), "rings" (rings.js) or "polygons"
+// (polygons.js). ?view=rings in
 // the address picks one; otherwise the last one chosen in this browser. A
 // convenience only, so a browser that will not store it just gets the grid.
-const DRAWINGS = { grid: createView, rings: createRingView };
+const DRAWINGS = { grid: createView, rings: createRingView, polygons: createPolygonView };
 const DRAWING_KEY = "randaw-drawing";
 let drawing = new URLSearchParams(location.search).get("view");
 if (!Object.hasOwn(DRAWINGS, drawing ?? "")) {
@@ -455,6 +457,7 @@ window.addEventListener("resize", () => {
 $("play").addEventListener("click", togglePlay);
 $("mode-grid").addEventListener("click", () => chooseDrawing("grid"));
 $("mode-rings").addEventListener("click", () => chooseDrawing("rings"));
+$("mode-polygons").addEventListener("click", () => chooseDrawing("polygons"));
 $("prev").addEventListener("click", () => changePage(-1));
 $("next").addEventListener("click", () => changePage(1));
 

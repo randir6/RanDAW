@@ -13,7 +13,9 @@
 // rings.js draws the same piece another way; what the two share is in
 // drawing.js.
 
-import { addHatch, barsLabel, drawLayerLabel, el, layerClass, lightUp, pitchWords, textGrid, tip } from "./drawing.js";
+import {
+  addHatch, barsLabel, drawLayerLabel, drawMark, el, layerClass, lightUp, showPicked, textGrid, tip, whereWords,
+} from "./drawing.js";
 
 // The visualiser shows at most this many layers, for now. The limit belongs
 // to the drawing ONLY: the engine and the audio are unlimited, and the rows
@@ -161,31 +163,11 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
       placed.push({ layer: c.layer, position: c.position, node: band });
       const g = el("g", { class: layerClass(d, c.layer) }, front);
 
-      const where = `${info.name} · bar ${c.bar}, beat ${c.beat} of ${info.beats} · ${c.time.toFixed(2)} s`;
-      if (c.status === "note") {
-        const r = radius(c.layer);
-        const y = yOf(c.layer, c.height);
-        const m = el("g", { class: info.percussive ? "mark hit" : "mark note", ...tappable }, g);
-        placed.push({ layer: c.layer, position: c.position, node: m });
-        if (info.percussive) {
-          const s = r * 0.62, ym = rowTop(c.layer) + ROW_H / 2;
-          el("circle", { cx: x0, cy: ym, r }, m);  // invisible, but easier to hover
-          el("line", { x1: x0 - s, y1: ym - s, x2: x0 + s, y2: ym + s }, m);
-          el("line", { x1: x0 - s, y1: ym + s, x2: x0 + s, y2: ym - s }, m);
-        } else {
-          el("circle", { cx: x0, cy: y, r }, m);
-          el("text", { x: x0, y: y + 0.5, "font-size": Math.min(14, r * 1.05) }, m, c.label);
-        }
-        tip(m, `${where} · ${pitchWords(info, c)}`);
-        marks.push({ node: m, time: c.time });
-      } else if (c.status === "rest") {
-        const ym = rowTop(c.layer) + ROW_H / 2;
-        const r = el("rect", { x: x0 - 6, y: ym - 3, width: 12, height: 6, rx: 1, class: "rest-glyph", ...tappable }, g);
-        placed.push({ layer: c.layer, position: c.position, node: r });
-        tip(r, `${where} · rest`);
-      } else {
-        tip(band, `${where} · beat switched off`);
-      }
+      // Drum hits and rests have a height of 0.5, so they sit mid-row.
+      const mark = drawMark(g, info, c, x0, yOf(c.layer, c.height), radius(c.layer), tappable, whereWords(info, c));
+      if (mark) placed.push({ layer: c.layer, position: c.position, node: mark });
+      if (c.status === "note") marks.push({ node: mark, time: c.time });
+      if (c.status === "inactive") tip(band, `${whereWords(info, c)} · beat switched off`);
     }
 
     // Lines joining layers that sound at the same instant, drawn from the
@@ -212,9 +194,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     applyHighlight();
   }
   function applyHighlight() {
-    for (const { layer, position, node } of placed) {
-      node.classList.toggle("picked", picked !== null && picked.layer === layer && picked.position === position);
-    }
+    showPicked(placed, picked);
   }
 
   // Taps. Assigning svg.onclick (rather than adding a listener) replaces the

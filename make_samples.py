@@ -133,11 +133,19 @@ def bell(duration=0.6, f0=330.0):
     return normalise(sig)
 
 
+def click(duration=0.03, f0=2000.0):
+    # The metronome: a very short, bright tick, used to make the base beat
+    # audible. A fast decay keeps it out of the way of everything else; no
+    # randomness, so it is the same every time it is made.
+    t = t_axis(duration)
+    return normalise(np.sin(2 * np.pi * f0 * t) * np.exp(-t * 180) * (1 - np.exp(-t * 4000)))
+
+
 def main():
     # exist_ok=True means "don't complain if the folder is already there".
     OUT.mkdir(exist_ok=True)
     # Looping over (name, signal) pairs keeps the writing logic in one place
-    # instead of repeating sf.write six times.
+    # instead of repeating sf.write for every sound.
     for name, sig in [
         ("kick", kick()),
         ("snare", snare()),
@@ -145,6 +153,7 @@ def main():
         ("tom", tom()),
         ("pluck", pluck()),
         ("bell", bell()),
+        ("click", click()),  # last, so the random sounds above are unchanged
     ]:
         path = OUT / f"{name}.wav"  # pathlib overloads / to join paths
         sf.write(path, sig, SR)

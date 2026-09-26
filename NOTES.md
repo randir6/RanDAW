@@ -3,6 +3,12 @@
 Running notes on known limitations and decisions. Not a spec — VISION.md and
 PHASE1_SPEC.md are the spec, and stay as written.
 
+**On the words.** Phase 12 settled the vocabulary; README.md's Glossary is
+the list. Entries written before it use the older words, and are left as
+written where they record history: a *cycle* is what is now a **bar**,
+*loops* is **bars** (the length), a *step* of a sequence is a **position**,
+and *the LCM* is **pulses per bar**.
+
 ## Known limitations (phase 1)
 
 These are consequences of deliberate choices, not bugs. Each one is worth
@@ -44,7 +50,7 @@ keep the top 16) and could be simplified once the Python version is retired,
 at the cost of changing the last bit of some samples.
 
 ### The drawing scrolls sideways on a phone held upright
-Since phase 11, narrow screens show two cycles per page and the drawing keeps
+Since phase 11, narrow screens show two bars per page and the drawing keeps
 a readable size, scrolling sideways inside its frame. Workable, not lovely;
 a layout made for portrait phones would be its own piece of work.
 
@@ -54,26 +60,39 @@ Consequence: adding layers or stacking overlapping tails can clip, and the fix
 is to dial gains down yourself. The clipping warning suggests a specific value
 that resolves it.
 
-### Very high LCMs lose grid resolution
-Beats land on an integer grid of pulses, `LCM` of them per cycle. A cycle of
-C seconds at sample rate R therefore needs `LCM <= C * R` for at least one
-sample per pulse, and comfortably fewer than that to place beats accurately.
+### The file is not exactly the tempo's length
+Beats land on an integer grid of pulses, and each pulse is a whole number of
+audio samples. So a bar is (pulses per bar) × (samples per pulse), which is
+the tempo's bar length rounded to fit. The `spans` example asks for a 2.4 s
+bar (100 BPM, 4 beats) and gets 2.4019 s, because 364 pulses per bar do not
+divide 2.4 × 44100 evenly: 8 bars come out 15 ms long.
 
-Measured at a 2s cycle, 44.1 kHz: 3/4/5/7/11 (LCM 4620) renders a 1.990s
-cycle, 0.5% off and inaudible. Adding a 13 (LCM 60060) leaves 1.47 samples
-per pulse, which rounds to 1 and collapses the cycle to 1.36s — the tool
-warns when the rounded cycle differs from the requested one by over 1%.
+Inaudible within the file, but **it matters for the tool's purpose**: a loop
+dropped into a DAW or looper running at 100 BPM will drift against it by
+that much each time round, unless the host stretches it to fit. Fixable by
+placing each beat at its exact fraction of the bar, rounded to the nearest
+sample, instead of snapping to a pulse grid — then the file is exactly
+bars × bar length, and each beat is within half a sample of true. It would
+change the sound of new pieces by at most a sample per beat; older pieces
+could keep today's timing. **Top candidate for the next piece of work.**
 
-Fixable if it ever bites, by computing each event's position directly from
-its fractional position in the cycle instead of snapping to a pulse grid.
-Not worth doing until someone actually wants six coprime layers.
+### Very fine grids lose resolution
+A bar of B seconds at sample rate R needs pulses per bar ≤ B × R for at
+least one sample per pulse, and comfortably fewer to place beats accurately.
+
+Measured at a 2s bar, 44.1 kHz: 3/4/5/7/11 (4620 pulses per bar) renders a
+1.990s bar, 0.5% off and inaudible. Adding a 13 (60060) leaves 1.47 samples
+per pulse, which rounds to 1 and collapses the bar to 1.36s — the page warns
+when the rounded bar differs from the requested one by over 1%.
+
+The same fix as above removes this limit too.
 
 ## Open questions
 
 ### Rest behaviour may not be right — revisit first
 
 Flagged at the end of the first session, unresolved and deliberately not
-acted on. The doubt is about rests shifting position each cycle: a rest
+acted on. The doubt is about rests shifting position each bar: a rest
 travels with the sequence, so when the sequence length differs from the beat
 count the silence lands on a different beat each time round. That is what
 was built and it is what the checks assert, but it may not be the musically
@@ -85,11 +104,11 @@ the sequence exactly as long as the beat count, which pins the rest in place,
 and compare.
 
 **You can see it rather than work it out.** Open the page and pick the
-`rests` example: the rest marks wander across the pluck row (7 steps over 5
-beats) and the kick row (6 over 8), but stay put on the bell's (3 over 3).
-Still no behaviour changed. Since phase 11, tapping a step in a layer's step
-strip outlines every place that step lands, and edits are heard at the next
-cycle -- so trying variations is now quick.
+`rests` example: the rest marks wander across the pluck row (7 positions
+over 5 beats) and the kick row (6 over 8), but stay put on the bell's (3 over
+3). Still no behaviour changed. Since phase 11, tapping a position in a
+layer's Sequence row outlines every place it lands, and edits are heard at
+the next bar -- so trying variations is now quick.
 
 Talked through since: rests and switched-off beats sound the same on any one
 beat and are the same thing when the sequence is as long as the beat count.
@@ -108,9 +127,10 @@ question.
 Ideas deliberately not built, kept here so they are not lost. Nothing in
 this list is committed to, and none of it is in the phase plan.
 
-### Sections — variations across cycles (high priority)
+### Sections — variations across bars (high priority)
 
-Treat a cycle as a bar, and let a piece be a sequence of sections that share
+Let a piece be a sequence of sections -- say 4 bars each, in a 16-bar
+file -- that share
 a polyrhythmic base but vary what sits on top: which beats are active, which
 scale, which notes, gains, maybe samples. Four bars with the same skeleton
 and different detail is most of what turns a loop into an arrangement, and
@@ -119,18 +139,20 @@ it is the largest musical gap in the tool as it stands.
 Design notes from thinking it through, so the work does not start cold:
 
 - **The schedule is already the right seam.** A section produces its own
-  events and they get offset by the cycles already elapsed. `render_audio`
+  events and they get offset by the bars already elapsed. `renderAudio`
   would not change at all, the same way beat skipping did not touch it.
-- **The LCM must be computed across every section, not per section.** If
-  section 2 introduces a layer with a different beat count, the pulse grid
-  changes, and a grid that changed mid-piece would break the timing
-  guarantees. Take the LCM of all beat counts in the whole piece up front.
+- **Pulses per bar must be worked out across every section, not per
+  section.** If section 2 introduces a layer with a different beat count,
+  the pulse grid changes, and a grid that changed mid-piece would break the
+  timing guarantees. Work it out over the whole piece up front. (Or place
+  beats exactly, with no pulse grid -- see the limitation above.)
 - **Variation is best expressed as an override, not a re-declaration.**
   Repeating every layer per section would be miserable to write and easy to
   get inconsistent. Something closer to: declare the layers once, then
   per-section state only what differs.
-- **Section length wants to be in cycles**, since the cycle is the bar.
-- **Interacts with drift (phase 12).** Sections are deliberate variation;
+- **Section length is in bars**, a whole number of them. A layer spread
+  over 2 bars wants sections that are a multiple of 2 long.
+- **Interacts with drift.** Sections are deliberate variation;
   drift is gradual variation. They are different answers to the same
   musical problem and it is worth deciding whether they coexist or whether
   one makes the other redundant before building the second one.
@@ -141,7 +163,7 @@ Design notes from thinking it through, so the work does not start cold:
   sample per layer, pitch-shifted, is the model. If it returns, the samples
   list should be length 1 or exactly the length of the pitch sequence, so a
   layer keeps ONE period: an independently cycling sample list would give
-  4 beats / 12 notes / 5 samples a 15-cycle repeat that nobody can author or
+  4 beats / 12 notes / 5 samples a 15-bar repeat that nobody can author or
   predict.
 - **Chords within a layer.** One note per beat today.
 - **Chromatic passing notes in a degree sequence.** Degrees can only land on
@@ -164,9 +186,9 @@ Design notes from thinking it through, so the work does not start cold:
   `--normalise` that scales the finished mix to just under 0 dB would save
   dialling gains in by trial and error.
 - **Sample-accurate event placement.** Beats snap to an integer pulse grid,
-  which loses resolution at very high LCMs (see above). Computing each
-  event's position from its fractional position in the cycle would remove
-  the limit entirely.
+  which makes the file slightly off the tempo's length and loses resolution
+  on very fine grids (both above). Placing each beat at its exact fraction
+  of the bar would fix both.
 - **Stereo.** Everything is mono. Panning is an obvious per-layer parameter
   and would want settling before per-layer effects land.
 - **Explicit output bit depth.** 16-bit PCM is currently soundfile's default
@@ -182,12 +204,9 @@ Design notes from thinking it through, so the work does not start cold:
   another app directly. Needs trying on the device.
 - **Your own samples in the page.** A file picker, decoded by `wav.js`;
   "Save page" would then carry them inside the shared file too.
-- **Rename `loops` to `cycles`.** They are the same unit, and having two
-  words for it is the one genuinely confusing bit of vocabulary. Would want
-  doing in one go, with the old spelling accepted for a while -- saved pieces
-  use `loops`.
-- **BPM referenced to a named layer.** `--cycle-duration` is the honest
-  control, but "put layer 2 at 120 bpm" is how a musician would ask.
+- **A different click sound, or its own gain.** The click is one fixed
+  tick (`click.wav`), higher on beat 1. Enough to count by; a setting if it
+  ever needs to be quieter or different.
 
 ## Decisions worth remembering
 
@@ -315,10 +334,10 @@ Design notes from thinking it through, so the work does not start cold:
   while the last good version keeps playing. Undo is a list of old specs.
 - **The editor panel is rebuilt from the piece after every change**, rather
   than updated piece by piece, so it can never disagree with the piece.
-- **Edits come in at the next cycle, counted in cycles.** The player keeps
-  its position as a cycle count, not seconds, because an edit can change the
-  cycle length; the new version starts on the downbeat of the cycle playback
-  was about to reach, and the old one fades over 15 ms.
+- **Edits come in at the next bar, counted in bars.** The player keeps its
+  position as a bar count, not seconds, because an edit can change the bar
+  length; the new version starts on the downbeat of the bar playback was
+  about to reach, and the old one fades over 15 ms.
 - **Mute and solo are saved in the piece**, as a DAW keeps them. Solo wins
   over mute. Silent layers stay drawn, faded, with their name saying why, and
   are left out of the WAV and of "sounding together".
@@ -339,5 +358,37 @@ Design notes from thinking it through, so the work does not start cold:
 - **Two greys:** `--muted` for lines and hatching in the drawing (3:1 is the
   bar for graphics), `--ink-3` for quiet text (4.5:1 for small text). Keep
   them apart.
-- **Loop suggestions round up** to the next whole number of repeats, so
+- **Length suggestions round up** to the next whole number of repeats, so
   following one never shortens a piece unexpectedly.
+
+### Phase 12: tempo, base and bars
+
+- **One vocabulary, everywhere.** Tempo, base, bar, beat, over, sequence and
+  position, repeats every N bars, length in bars -- in the page, the saved
+  file, the code and its comments. README.md's Glossary is the list. "Cycle",
+  "loops" and "step" left the page; "pulse" stays inside the engine.
+- **The base is a setting, not a layer.** It sets the bar (with the tempo)
+  and is drawn as faint lines and heard as the click, but it has no sequence
+  of its own. A layer that should sound on the base beats is just a layer
+  with that many beats.
+- **The base joins the pulse grid**, so its beats land exactly -- whether or
+  not the click is on, so turning the click on never re-times anything.
+- **Tempo is the base beat's BPM, and the bar is still the unit.** Adding a
+  layer still subdivides the bar rather than stretching it, exactly as the
+  cycle did.
+- **A layer can spread over several bars (`over`)** instead of squeezing a
+  big beat count into one: 13 over 2 bars. Its beats are evenly spread
+  across the span; the pulse grid needs beats / gcd(beats, over) per bar. A
+  piece that ends part-way through a span simply stops there.
+- **Older pieces are read, not rejected.** `cycle_duration`,
+  `pulse_duration` and `loops` still work and are timed exactly as before
+  (base left out of the grid unless the click needs it), so the recorded
+  Python answers still match to the byte. The page upgrades an older piece
+  to tempo/base/bars as it opens it; saying the same thing both ways in one
+  piece is refused. Saved files are now format version 2; version 1 reads.
+- **The click is off unless asked for**, and is its own sample made by
+  `make_samples.py` (added last, so the other sounds are unchanged). It is
+  sound only: it is not a layer, is not drawn, and does not count as a layer
+  sounding together.
+- **The page prefers a whole span per page**: with a layer over 2 bars, it
+  shows 4 or 2 bars at a time rather than 3, so a span is not split.

@@ -14,12 +14,12 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 77 checks, should all pass
+npm test                      # 90 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
-each spanning a cycle, with a playhead running through all of them — notes,
-rests and switched-off beats, and where they fall against each other.
+running through the bars, with a playhead running through all of them —
+notes, rests and switched-off beats, and where they fall against each other.
 
 From the page you can **Download WAV**, **Save piece** (a small `.json` file
 that **Open…** reads back), or **Save page**: a copy of the whole page with
@@ -27,14 +27,15 @@ your piece inside, which is the one file you can email to someone. The page
 needs no internet connection and nothing installed; it works on an iPad as
 well as a laptop.
 
-The six examples, in `web/examples/`:
+The seven examples, in `web/examples/`:
 
 | Example | What it demonstrates |
 |---|---|
 | `tresillo` | 3-3-2 groove with a 3-beat hat cutting across it |
 | `rests` | Rests that travel through the bar |
-| `seven` | 7 grouped 3-2-2, with a 4-beat tom pulling against it |
-| `phase_study` | 5 beats against 7 notes — takes 7 cycles to come back round |
+| `seven` | 7 grouped 3-2-2 on a base of 7, with a 4-beat tom pulling against it |
+| `spans` | 7 and 13 beats, each spread over 2 bars of 4 |
+| `phase_study` | 5 beats against 7 notes — takes 7 bars to come back round |
 | `sparse_dub` | Space rather than density |
 | `scales` | Change one word, the whole piece re-harmonises |
 
@@ -42,41 +43,52 @@ A piece is a short JSON file, one layer per line:
 
 ```json
 {
-  "cycle_duration": 2.2,
-  "loops": 6,
+  "tempo": 110,
+  "base": 4,
+  "bars": 6,
   "scale": "dorian",
   "layer": [
     {"beats": 5, "degrees": [1, "-", 5, 4, "-", 2, 8], "sample": "pluck.wav", "gain": 0.38},
+    {"beats": 7, "over": 2, "notes": [0], "sample": "tom.wav", "gain": 0.3},
     {"beats": 8, "notes": [0], "sample": "hat.wav", "gain": 0.14, "active": [3, 6, 8]}
   ]
 }
 ```
 
+That reads: 110 beats per minute, 4 beats to the bar, 6 bars long. A pluck
+plays 5 beats in every bar, a tom 7 beats spread over every 2 bars, a hat 8
+beats a bar with only the 3rd, 6th and 8th sounding. The words are defined
+in the [Glossary](#glossary) below.
+
 ## Editing
 
 Everything is edited in the page, and you hear each change straight away.
-While a piece is playing, a change comes in at the start of the next cycle,
+While a piece is playing, a change comes in at the start of the next bar,
 so the groove never stops.
 
 - **Tap a beat** in the drawing to switch it off, or back on. It is then
-  silent in every cycle (`active`).
+  silent every time the layer comes round (`active`).
 - **Tap the strip along the top** of the drawing to jump there.
-- **Under the drawing**, one card per layer: **M**ute, **S**olo, sample,
-  beats, semitones or scale degrees, scale, root, gain, ⧉ to duplicate the
-  layer and ✕ to remove it. An **On** row has a button per beat -- the same
-  as tapping beats in the drawing, but easy to hit on a phone.
-- **The Piece panel** above the cards: the piece's name (used for saved
-  files), undo and redo, cycle length, loops, scale, root and
-  **+ Add layer**. It also says how many cycles the whole pattern takes to
-  come round, and offers to set the loops to a whole number of repeats, so
-  the WAV loops on the pattern rather than restarting it part-way.
-- **The step strip** shows the layer's sequence, one tile per step. Tap a
-  tile to choose it -- every place that step lands lights up in the drawing,
-  which is the clearest way to see a sequence phase against its beats --
-  then tap a key to change it, or **rest**. **+** and **−** make the
-  sequence longer or shorter. The text box beside it holds the same
-  sequence for typing or pasting.
-- **Undo / Redo**, also ⌘Z / Ctrl+Z. **Escape** puts the step keypad away.
+- **The Piece panel**: the piece's name (used for saved files), undo and
+  redo, **Tempo** (BPM), **Base** (beats per bar), **Click** (hear the base
+  beats, like a metronome — off unless you turn it on), **Bars** (how long
+  the file is), scale, root and **+ Add layer**. It also says how many bars
+  the whole pattern takes to repeat, and offers to set the length to a whole
+  number of repeats, so the WAV loops on the pattern rather than restarting
+  it part-way.
+- **Under it**, one card per layer: **M**ute, **S**olo, sample, **Beats**
+  and **over** how many bars they spread, semitones or scale degrees, scale,
+  root, gain, ⧉ to duplicate the layer and ✕ to remove it. An **On** row has
+  a button per beat — the same as tapping beats in the drawing, but easy to
+  hit on a phone.
+- **The Sequence row** shows the layer's notes and rests, one tile per
+  position. Tap a tile to choose it — every place that position lands
+  lights up in the drawing, which is the clearest way to see a sequence
+  phase against its beats — then tap a key to change it, or **rest**. **+**
+  and **−** make the sequence longer or shorter. The text box beside it
+  holds the same sequence for typing or pasting. Beside it: how many bars
+  until this layer repeats.
+- **Undo / Redo**, also ⌘Z / Ctrl+Z. **Escape** puts the position keypad away.
 - **A mix that clips** (too loud, so it distorts) says so, with a button to
   turn every layer down by the same amount, just enough to fit.
 - A change that breaks a rule (a sequence of nothing but rests, say) is
@@ -88,69 +100,84 @@ so the groove never stops.
 
 ## Glossary
 
-The words that are easy to confuse, in the order they nest.
+These are the words the page, the saved files, the code and its comments
+all use, and they mean exactly this. In the order they build on each other:
 
-**Pulse** — the finest grid unit. One cycle contains LCM(all beat counts)
-pulses, so 3-against-4 gives 12 pulses per cycle. Internal plumbing; you
-rarely set it directly.
+| Word | Means | In a saved piece |
+|---|---|---|
+| **Tempo** | Beats per minute of the base beat. | `"tempo": 120` (120 if left out) |
+| **Base** | How many beats make a bar: the meter everything sits on. A setting of the piece, not a layer. | `"base": 4` (4 if left out) |
+| **Bar** | One bar of the base. At 120 BPM with a base of 4, a bar is 2 seconds. | |
+| **Beat** | One of a layer's divisions of its span of bars. Every layer has its own beats. | `"beats": 7` |
+| **Over** | How many bars a layer's beats are spread across: "7 beats over 2 bars". | `"over": 2` (1 if left out) |
+| **Sequence** | A layer's notes and rests, read one **position** per beat. | `"notes"` or `"degrees"` |
+| **Repeats every N bars** | When a layer's pattern — or the whole piece's — comes back round to where it started. | |
+| **Length** | The whole file, in bars. | `"bars": 8` |
+| **Click** | The base beats made audible, higher on beat 1 of each bar. Off unless turned on. | `"click": true` |
+| **Section** | *Not built.* A run of bars sharing a variant of the piece. | |
 
-**Beat** — one division of a cycle *by one layer*. A 3-beat layer has three
-beats per cycle, a 4-beat layer has four, and they occupy the same span of
-time. Every layer has its own beats — the `beats` of a layer.
+More on each, and the rest of the words:
 
-**Cycle** — one full turn of the polyrhythm, where every layer realigns on
-its first beat. **The cycle is the bar.** Its length is the thing you set
-(`cycle_duration`), and every layer divides it. Adding a layer subdivides the
-same span rather than stretching it — that was a real bug once, caught by ear,
-and there is a regression check for it now.
+**Tempo and base** set the bar, and the bar is the unit everything else is
+counted in. 4 beats at 120 BPM is a 2-second bar; 7 beats at 150 BPM is 2.8.
+Adding a layer never changes the bar: it only divides it more finely.
 
-**Cell** — one beat of one layer in one cycle, whatever happens there: a
-note, a rest, or a switched-off beat. The *grid* is every cell of a piece;
-the *schedule* is just the cells that sound. A picture needs the grid,
-because silence is half of a rhythm.
+**Beat** — one division by one layer. A 3-beat layer and a 4-beat layer
+both fill the same bar, so their beats are different lengths: that is the
+polyrhythm. The base's beats are just one more grid over the same bar,
+drawn as faint lines and heard as the click.
 
-**Loop** — a repeat of the cycle in the output. `loops = 8` renders eight
-cycles. *Note: `loops` and `cycle` mean the same unit, which is a naming wart
-— `cycles` would have been clearer. Backlogged rather than renamed.*
+**Over** — a layer can spread its beats over more than one bar. 13 beats in
+one bar of 4 are crowded; 13 over 2 bars are the same rhythm at half the
+speed. The layer comes back to its first beat every 2 bars, while the base
+carries on counting bars underneath.
 
-**Sequence** — a layer's list of pitches (`notes` or `degrees`). Its length is
-independent of the beat count, and that is where the interesting behaviour
-comes from.
+**Sequence and position** — the sequence is a layer's list of pitches
+(`notes` or `degrees`, with `"-"` for a rest). It is read one position per
+beat, and its length is independent of the beat count, which is where the
+interesting behaviour comes from.
 
-**Phasing** — what happens when a sequence is a different length from the beat
-count, so it lines up differently each cycle. A 5-note sequence on a 3-beat
-layer takes 15 beats to return to the start. Not a time unit — a *behaviour*.
-Give the sequence a length equal to the beat count (or a multiple) and you get
-a plainly composed pattern instead. Both are the same mechanism.
+**Repeats every N bars** — a layer's pattern repeats when its sequence and
+its beats line up again: a 7-position sequence on 5 beats takes 7 bars. The
+whole piece repeats when every layer has. The page offers to make the
+length a whole number of repeats, so the file loops cleanly.
 
-**Section** — **not built.** A span of cycles sharing a variant of the piece,
-so a piece could be four bars with the same skeleton and different detail.
-Top of the backlog in `NOTES.md`.
+**Phasing** — what happens when a sequence is a different length from the
+beat count, so it lines up differently each time round. A 5-note sequence on
+a 3-beat layer takes 15 beats to return to the start. Not a time unit — a
+*behaviour*. Give the sequence a length equal to the beat count (or a
+multiple) and you get a plainly composed pattern instead. Both are the same
+mechanism.
 
-**Drift** — **not built.** Gradual timing shift so layers slowly fall out of
-alignment rather than repeating exactly. Note that sections and drift are two
-answers to the same musical question (variation over time), and it is worth
-deciding which you want before building either.
+**Cell** — one beat of one layer, whatever happens there: a note, a rest,
+or a switched-off beat. The *grid* is every cell of a piece; the *schedule*
+is just the cells that sound. A picture needs the grid, because silence is
+half of a rhythm.
 
-**Layer** — a beat count, a pitch sequence, one sample, a gain, and optionally
-which of its own beats sound.
+**Rest** — `"-"` in a sequence. Sounds nothing at that position. It *travels
+with the sequence*, so when the sequence and beat count differ it lands on a
+different beat each time round.
+
+**Active beats** — which of a layer's own beats sound, counting from 1.
+Fixed: an inactive beat is silent on the same beat *every* time round. That
+is the difference from a rest, and it is the distinction worth keeping
+straight.
+
+**Layer** — a beat count (over some bars), a sequence, one sample, a gain,
+and optionally which of its own beats sound.
 
 **Note** — a pitch written as a semitone offset. `0` is unison, `12` an octave
 up. Right for drums, where a scale means nothing.
 
-**Degree** — a pitch written as a position in a scale, counting from 1 as
+**Degree** — a pitch written as a place in a scale, counting from 1 as
 musicians do. In major, `1, 3, 5` is a major triad. `8` is the octave above
 `1`; below `1` they run downwards. A layer uses `notes` **or** `degrees`,
 never both — two separate fields so that adding a scale can never silently
 reinterpret a drum layer's numbers.
 
-**Rest** — `"-"` in a sequence. Sounds nothing at that position. It *travels
-with the sequence*, so when the sequence and beat count differ it lands on a
-different beat each cycle.
-
-**Active beats** — which of a layer's own beats sound, counting from 1. Fixed:
-an inactive beat is silent on the same beat *every* cycle. That is the
-difference from a rest, and it is the distinction worth keeping straight.
+**Root** — a semitone offset applied to a whole layer. Deliberately not a key
+name like "D", because these are pitch shifts applied to samples whose own
+pitch is unknown, so naming a key would be a fiction.
 
 **Spec and Piece** — the spec is what you wrote (degrees, scale, `"-"`,
 beats counted from 1); the Piece is what it means once worked out
@@ -158,9 +185,33 @@ beats counted from 1); the Piece is what it means once worked out
 Saving always saves the spec, since a Piece has forgotten which scale its
 semitones came from.
 
-**Root** — a semitone offset applied to a whole layer. Deliberately not a key
-name like "D", because these are pitch shifts applied to samples whose own
-pitch is unknown, so naming a key would be a fiction.
+**Section** and **drift** — *not built.* A section would be a run of bars
+sharing a variant of the piece; drift a gradual timing shift so layers
+slowly fall out of alignment. They are two answers to the same musical
+question (variation over time), worth deciding between before building
+either.
+
+**Pulse** — *inside the engine only.* The finest grid on which every beat
+of every layer, and every base beat, lands: 3 against 4 needs 12 pulses per
+bar. It keeps the arithmetic exact. Nobody composes in pulses, and the page
+never shows them.
+
+### Older words
+
+Pieces saved before phase 12 used other words. They still open, and the page
+turns them into today's as it opens them (`upgradeSpec` in `spec.js`):
+
+| Older | Today |
+|---|---|
+| `cycle_duration` (seconds per cycle) | `tempo`, worked out with the base: 2.2 s of 4 beats is 109.091 BPM |
+| `pulse_duration` | `tempo`, the same way |
+| `loops` | `bars` |
+| cycle | bar |
+| step (of a sequence) | position |
+
+A piece may use one form or the other, not both. The engine still reads the
+older keys directly and times them exactly as before, which is how the
+checks can compare against answers recorded long ago.
 
 ## How the code is laid out
 
@@ -177,7 +228,7 @@ web/
     wav.js           reading and writing WAV files, byte by byte
     numbers.js       the arithmetic that has to match Python's exactly
     derive.js        everything a drawing needs, worked out from a Piece
-    view.js          drawing a piece in step notation. Draws only.
+    view.js          drawing a piece as a grid of beats. Draws only.
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
     draft.js         keeping the piece in the browser between visits
@@ -188,9 +239,9 @@ web/
     main.js          the one piece of state, and wiring it all together
   page.html          the page template: layout and colours
   build.js           stitches it all into one file: dist/randaw.html
-  examples/          the six example pieces
+  examples/          the example pieces
   test/              the checks — run with `npm test`
-samples/             six synthetic one-shots, built into the page
+samples/             seven synthetic one-shots (six sounds and the click), built into the page
 make_samples.py      how those were made (Python; the only Python left)
 ```
 
@@ -220,7 +271,7 @@ phone. It is all in git history up to commit `3fffdeb` (`git checkout 3fffdeb`
 to see it). What it did is pinned down by the recorded answers in
 `web/test/fixtures/`, which the JavaScript still has to match.
 
-`make_samples.py` is the one Python file left: the record of how the six
+`make_samples.py` is the one Python file left: the record of how the
 built-in sounds were made (`pip install -r requirements.txt`, then
 `python3 make_samples.py`). Nothing else needs Python.
 
@@ -236,14 +287,15 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 ## Where things stand
 
-Phases 1–11 are done: N layers, cycle-based tempo, the schedule/audio split,
-beat skipping, scales, rests, the spec/Piece split, JSON export, a
-visualiser that plays in time with its drawing, the whole engine in one
-self-contained web page that runs on a laptop, iPad or phone — and live
-editing in that page, with mute, solo and undo.
+Phases 1–12 are done: N layers, the schedule/audio split, beat skipping,
+scales, rests, the spec/Piece split, JSON export, a visualiser that plays in
+time with its drawing, the whole engine in one self-contained web page that
+runs on a laptop, iPad or phone, live editing in that page with mute, solo
+and undo — and (12) tempo, base and bars, with layers that span several bars
+and an optional click.
 
-Next up is sections (12): variations across cycles. Drift, effects and MIDI
-follow. See `PHASES.md`.
+Sections (variation across bars), drift, effects and MIDI are still ahead.
+See `PHASES.md`.
 
 **Things worth knowing before picking up:**
 
@@ -252,22 +304,26 @@ follow. See `PHASES.md`.
    same on every device for the same piece.
 2. **Rest behaviour is under question** — see Open questions at the top of
    `NOTES.md`. The `rests` example is the quickest way in.
-3. **Sections is top of the backlog.** It is probably the largest musical gap.
+3. **A file is the tempo's length only to within a few milliseconds per
+   bar**, so a loop can drift against a DAW at the same tempo. The fix is
+   written up in `NOTES.md`; it is the top candidate for the next piece of
+   work, ahead of sections (the largest musical gap).
 4. **Nobody has run this with real samples yet.** Everything so far is
    verified against synthetic one-shots, which proves the maths but not the
    music.
 
 ## Checking nothing is broken
 
-`npm test` (in `web/`) runs three sets of checks:
+`npm test` (in `web/`) runs seven sets of checks:
 
-- **engine** — the rules, stated directly: timing, rests, switched-off
-  beats, wrapping tails, reading and saving pieces, and the traps specific
-  to JavaScript.
+- **engine** — the rules, stated directly: timing, layers over several
+  bars, the click, rests, switched-off beats, wrapping tails, reading,
+  saving and upgrading pieces, and the traps specific to JavaScript.
 - **parity** — the answer key. The Python engine's results for the six
-  examples and 600 random pieces were recorded in `test/fixtures/`, and the
-  JavaScript engine must match them exactly: same verdict, same grid,
-  byte-identical WAV.
+  original examples and 600 random pieces were recorded in `test/fixtures/`,
+  and the JavaScript engine must match them exactly: same verdict, same grid,
+  byte-identical WAV. They are in the older words, so they also prove older
+  pieces still sound exactly as they did.
 - **edit** — every change the editor can make, checked without a browser.
 - **fuzz** — thousands of random edits from a fixed seed; nothing may crash,
   and rules that must always hold (one cell per beat, solo beats mute,
@@ -278,8 +334,8 @@ follow. See `PHASES.md`.
   without error, draw every note, and render the same audio fingerprint as
   Node.
 - **editing** — drives the editor as a person would (taps a beat, presses
-  M, picks a step and a key, types a sequence, undoes, reloads, edits while
-  playing) and checks the page's audio against the same edit made in Node.
+  M, picks a position and a key, types a sequence, changes the tempo, base,
+  bars and click, undoes, reloads, edits while playing) and checks the page's audio against the same edit made in Node.
 
 The browser checks drive Chrome through its debugging protocol
 (`test/browser.js`, no library) and are skipped if no Chromium is installed.

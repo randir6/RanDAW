@@ -4,6 +4,10 @@
 names in those sections refer to it; its code is in git history up to commit
 `3fffdeb`.*
 
+*Phases 1–11 use the older words: a **cycle** is what phase 12 calls a
+**bar**, **loops** is the length in **bars**, and a **step** of a sequence is
+a **position**. README.md's Glossary has today's words.*
+
 Sequencing for the capability arc in VISION.md. Each phase aims to be small
 enough to finish, and to end with something you can listen to or inspect.
 Phases after the next one or two are sketches — expect them to move.
@@ -544,10 +548,57 @@ Work done without new decisions, each change its own commit:
 
 ---
 
-## Phase 12 — Sections (from the backlog)
+## Phase 12 — Tempo, base and bars — DONE
 
-Variations across cycles: same polyrhythmic base, different active beats,
-scale or notes per bar. Design notes are in NOTES.md.
+The units of time were reviewed with the page in hand, and settled as the
+words a musician would use. The glossary in README.md is the list.
+
+**What changed for a person using it:**
+
+- **Tempo** in BPM and a **base** (beats per bar, 4 unless changed) replace
+  the cycle length in seconds. 120 BPM in 4 is a 2-second bar.
+- **Bars** replaces loops for the length of the file.
+- A layer's beats can spread **over** more than one bar: 7 over 2 bars, or
+  13 over 2, rather than crowded into one. The new `spans` example.
+- **Click**: the base beats as a metronome tick, higher on beat 1. Off
+  unless turned on.
+- The drawing is labelled in bars, with faint lines at the base beats. The
+  Sequence row (was Steps) has positions; each layer says how many bars
+  until it repeats, and the piece how many until the whole pattern does.
+
+**What was settled, and why:**
+
+- **The base is a setting, not a layer.** It has no sequence to edit; a
+  layer on the base beats is just a layer with that many beats.
+- **The base is part of the pulse grid** for today's pieces, so the click
+  lands exactly, and switching it on never moves anything else.
+- **Older pieces still open and still sound identical.** The engine reads
+  `cycle_duration`, `pulse_duration` and `loops` and times them as before;
+  the page upgrades such a piece to today's words when it opens it. The
+  recorded Python answers still match to the byte, which is the proof.
+  Upgrading can round the tempo (2.2 s in 4 is 109.091 BPM); where it comes
+  out exact, the upgraded piece is byte-identical too, and there is a check.
+- **Sections stay deferred.** With bars settled, a section is naturally a
+  whole number of bars in a longer file; the design notes in NOTES.md are
+  updated to say so.
+- **Found while building it:** the file is the tempo's length only to
+  within the pulse grid's rounding (15 ms over 8 bars of `spans`), so a
+  loop can drift against a DAW at the same tempo. Recorded in NOTES.md as
+  the top candidate for next.
+
+**Checks:** 90. Every older example is kept in `test/fixtures/legacy_examples`
+for the answer key; the examples themselves are now in today's words. New
+checks cover tempo and base, spans, the click, upgrading, and refusing the
+same setting given both ways; the fuzz run now changes tempo, base, bars,
+click and spans too.
+
+---
+
+## Phase 13 — Sections (from the backlog)
+
+Variations across bars: same polyrhythmic base, different active beats,
+scale or notes per bar -- a section being a whole number of bars in a longer
+file. Design notes are in NOTES.md.
 
 **Why after the GUI.** It is the largest musical gap, but it is also the
 hardest thing to design blind, and a working editor makes "what should four
@@ -555,7 +606,7 @@ bars of variation look like" a question you can answer by looking.
 
 ---
 
-## Phase 13 — Drift (arc item 3)
+## Phase 14 — Drift (arc item 3)
 
 Layers that slowly fall out of phase rather than repeating exactly. This is
 where the fixed-length-versus-streaming fork has to be settled for real --
@@ -565,7 +616,7 @@ both are wanted before building the second.
 
 ---
 
-## Phase 14 — Per-layer effects (arc item 4)
+## Phase 15 — Per-layer effects (arc item 4)
 
 Envelope first: every beat currently plays the whole sample flat, which is
 the bluntest thing about the sound. Then filtering, reverb.
@@ -577,7 +628,7 @@ byte-identical across browsers; decide then whether that matters.
 
 ---
 
-## Phase 15 — MIDI export
+## Phase 16 — MIDI export
 
 The schedule is most of the work, and pitch is already in semitones. Writing
 a MIDI file is simple bytes, no library needed. Sending live MIDI from a web

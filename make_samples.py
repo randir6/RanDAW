@@ -141,6 +141,49 @@ def click(duration=0.03, f0=2000.0):
     return normalise(np.sin(2 * np.pi * f0 * t) * np.exp(-t * 180) * (1 - np.exp(-t * 4000)))
 
 
+def keys(duration=1.1, f0=220.0):
+    """A soft electric piano, in the manner of a Rhodes: warm and round, with
+    a gentle bell-like edge on the attack that mellows as the note rings."""
+    t = t_axis(duration)
+    # FM synthesis ("frequency modulation", as in the 1980s DX7). One sine
+    # wave nudges the phase of another back and forth; the harder it nudges
+    # (the INDEX), the more overtones appear. Letting the index fall over
+    # time is the trick: the note starts bright and settles to a pure,
+    # rounded tone -- which is roughly what an electric piano's tine does.
+    index = 1.6 * np.exp(-t * 7) + 0.25
+
+    def voice(f):
+        return np.sin(2 * np.pi * f * t + index * np.sin(2 * np.pi * f * t))
+
+    # Two voices a hair apart in pitch drift in and out of step with each
+    # other, a slow shimmer ("chorus") that makes a synthetic tone sound less
+    # static. 0.15% is well under anything you would hear as out of tune.
+    tone = voice(f0) + voice(f0 * 1.0015)
+
+    # The tine's "ping": a quiet high partial that dies away almost at once.
+    ping = 0.12 * np.sin(2 * np.pi * f0 * 7.0 * t) * np.exp(-t * 40)
+
+    # Loud at once, then a long, slow fade; the fast rise stops a click.
+    envelope = np.exp(-t * 2.2) * (1 - np.exp(-t * 400))
+    return normalise((tone + ping) * envelope)
+
+
+def marimba(duration=0.8, f0=220.0):
+    """A wooden bar struck with a soft mallet: a round, woody note with
+    little of the pluck's buzz."""
+    t = t_axis(duration)
+    # Like the bell, a struck bar has INHARMONIC partials -- but a marimba
+    # bar is carved underneath so they land near 4x and 10x the fundamental.
+    # Kept quiet and short-lived, they give the "wood" without the metal.
+    sig = sum(
+        amp * np.sin(2 * np.pi * f0 * ratio * t) * np.exp(-t * decay)
+        for ratio, amp, decay in [(1.0, 1.0, 4.5), (3.93, 0.28, 16), (9.2, 0.06, 40)]
+    )
+    # The mallet itself: a soft low thump in the first few milliseconds.
+    thump = 0.3 * np.sin(2 * np.pi * f0 * 0.5 * t) * np.exp(-t * 90)
+    return normalise((sig + thump) * (1 - np.exp(-t * 700)))
+
+
 def main():
     # exist_ok=True means "don't complain if the folder is already there".
     OUT.mkdir(exist_ok=True)
@@ -153,7 +196,11 @@ def main():
         ("tom", tom()),
         ("pluck", pluck()),
         ("bell", bell()),
-        ("click", click()),  # last, so the random sounds above are unchanged
+        # These come after every sound that uses the random numbers, so the
+        # sounds above stay exactly as they were.
+        ("click", click()),
+        ("keys", keys()),
+        ("marimba", marimba()),
     ]:
         path = OUT / f"{name}.wav"  # pathlib overloads / to join paths
         sf.write(path, sig, SR)

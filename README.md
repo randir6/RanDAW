@@ -241,7 +241,9 @@ web/
   build.js           stitches it all into one file: dist/randaw.html
   examples/          the example pieces
   test/              the checks — run with `npm test`
-samples/             seven synthetic one-shots (six sounds and the click), built into the page
+samples/             synthetic one-shots, built into the page: kick, snare, hat,
+                     tom, and for melodies pluck, keys, marimba (all three
+                     tuned to A, 220 Hz) and bell (E); plus the click
 make_samples.py      how those were made (Python; the only Python left)
 ```
 

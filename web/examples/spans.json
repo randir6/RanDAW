@@ -5,7 +5,7 @@
   "scale": "minor",
   "layer": [
     {"beats": 4, "notes": [0], "sample": "kick.wav", "gain": 0.6},
-    {"beats": 7, "over": 2, "degrees": [1, 3, 5, 4, 3, 2, 5], "sample": "pluck.wav", "gain": 0.32},
+    {"beats": 7, "over": 2, "degrees": [1, 3, 5, 4, 3, 2, 5], "sample": "marimba.wav", "gain": 0.4},
     {"beats": 13, "over": 2, "notes": [0], "sample": "hat.wav", "gain": 0.16},
     {"beats": 4, "notes": [0], "sample": "snare.wav", "gain": 0.3, "active": [2, 4]}
   ]

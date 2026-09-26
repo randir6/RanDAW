@@ -26,6 +26,9 @@ export function findChromium() {
   return found.at(-1) ?? null;
 }
 
+// How long to wait for Chrome to answer any one request.
+const REPLY_LIMIT = 60;
+
 export async function launch(chromium) {
   const child = spawn(chromium, [
     "--headless=new", "--no-sandbox", "--disable-gpu", "--remote-debugging-pipe",
@@ -51,10 +54,20 @@ export async function launch(chromium) {
     }
   });
 
+  // Every request gets a reply within REPLY_LIMIT seconds or fails, naming
+  // itself. Without this, one lost reply would hang the checks for ever
+  // rather than fail them.
   function send(method, params = {}, sessionId = undefined) {
     const id = nextId++;
     toChrome.write(JSON.stringify({ id, method, params, sessionId }) + "\0");
-    return new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        waiting.delete(id);
+        reject(new Error(`no reply to ${method} in ${REPLY_LIMIT} s: ${JSON.stringify(params).slice(0, 200)}`));
+      }, REPLY_LIMIT * 1000);
+      const settle = (f) => (value) => { clearTimeout(timer); f(value); };
+      waiting.set(id, { resolve: settle(resolve), reject: settle(reject) });
+    });
   }
 
   // Open a page; returns helpers to run code in it.

@@ -213,6 +213,36 @@ test("editing: the strip along the top jumps playback", { skip }, () =>
     assert.ok(Math.abs(seconds - 5) < 0.03, `jumped to ${seconds} s`);
   }));
 
+test("editing: the rings drawing edits like the grid, and is remembered", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await click(page, "#mode-rings");
+    assert.equal(await page.evaluate("document.querySelectorAll('#stage .ring-bg').length"), 4);
+    // Tapping a slice of a ring switches that beat, as tapping the grid does.
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    assert.equal(await fingerprint(page), print(toggleBeat(example("tresillo"), 0, 2)));
+    // A quarter of the way round the outer ring is a quarter of the way
+    // through the bar: 0.5 s of tresillo's 2 s bar.
+    await page.evaluate(`{
+      const ring = document.querySelector(".ruler-ring");
+      const box = ring.getBoundingClientRect();
+      // 6 pixels in from its right-hand edge: 3 o'clock, on the ring.
+      ring.dispatchEvent(new MouseEvent("click", { bubbles: true,
+        clientX: box.left + box.width / 2 + (box.width / 2 - 6), clientY: box.top + box.height / 2 }));
+      true }`);
+    const seconds = await page.evaluate("parseFloat(document.getElementById('clock').textContent)");
+    assert.ok(Math.abs(seconds - 0.5) < 0.03, `jumped to ${seconds} s`);
+    // Opening the page again keeps the rings.
+    const again = await browser.open(PAGE);
+    try {
+      assert.equal(await again.evaluate("document.getElementById('mode-rings').getAttribute('aria-pressed')"), "true");
+      assert.ok(await again.evaluate("document.querySelectorAll('#stage .ring-bg').length") > 0);
+      await again.evaluate("document.getElementById('mode-grid').click(), true");
+      assert.equal(await again.evaluate("document.querySelectorAll('#stage .ring-bg').length"), 0);
+    } finally {
+      await again.close();
+    }
+  }));
+
 test("editing: the piece survives a reload", { skip }, () =>
   editing("tresillo", async (page) => {
     const spec = toggleBeat(example("tresillo"), 1, 1);

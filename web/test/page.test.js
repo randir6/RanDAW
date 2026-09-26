@@ -77,6 +77,19 @@ for (const name of examples) {
     }));
 }
 
+for (const name of examples) {
+  test(`page: ${name} draws as rings too, every note of its first turn`, { skip }, () =>
+    withPage(PAGE, `?example=${name}&view=rings&t=0`, async (page) => {
+      const attrs = await page.evaluate(ATTRS);
+      assert.equal(attrs.error, undefined, `page error: ${attrs.error}`);
+      const { piece } = renderWav(readJson(WEB, "examples", `${name}.json`));
+      const turn = Number(attrs.window);
+      const expected = pieceToDerived(piece).cells.filter((c) => c.status === "note" && c.bar <= turn).length;
+      assert.equal(Number(attrs.notesDrawn), expected);
+      assert.equal(await page.evaluate("document.getElementById('mode-rings').getAttribute('aria-pressed')"), "true");
+    }));
+}
+
 test("page: a saved page opens with the piece saved into it", { skip }, () => {
   const spec = { tempo: 160, bars: 2, layer: [layer(3), layer(4, "kick.wav")] };
   return withPage(savedPage("my groove", spec), "?t=0", async (page) => {

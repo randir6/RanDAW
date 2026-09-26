@@ -170,6 +170,19 @@
   .ruler { fill: var(--row); cursor: pointer; }
   .ruler:hover { fill: var(--grid); }
   .bar-label, .base-line { pointer-events: none; }
+
+  /* The rings drawing (rings.js). Each ring's background is a circle drawn
+     as a thick line; so is the ruler ring around the outside, which only
+     answers taps on the line itself. */
+  .ring-bg { fill: none; stroke: var(--row); }
+  .ruler-ring { fill: none; stroke: var(--row); cursor: pointer; }
+  .ruler-ring:hover { stroke: var(--grid); }
+  .ring-bar-label { text-anchor: middle; dominant-baseline: central; font-size: 12px; }
+  .ring-face { fill: var(--row); }
+  .ring-face-label {
+    fill: var(--ink-2); font-size: 17px; font-weight: 650;
+    text-anchor: middle; dominant-baseline: central; pointer-events: none;
+  }
   /* A layer that cannot be heard (muted, or another layer is soloed) is
      still drawn, faded, and its name says why. */
   .silent .band, .silent .mark, .silent .rest-glyph { opacity: .3; }
@@ -184,6 +197,7 @@
   @media (max-width: 700px) {
     figure { overflow-x: auto; }
     figure svg { min-width: 640px; }
+    figure svg.fit { min-width: 0; }
   }
 
   /* --- The editor ----------------------------------------------------------- */
@@ -218,6 +232,11 @@
   .switches { display: inline-flex; gap: 6px; }
   .toggle { min-width: 40px; font-weight: 700; }
   .toggle[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  /* Grid | Rings: two buttons joined into one control. */
+  .modes { display: inline-flex; }
+  .modes .toggle { font-weight: 600; }
+  .modes .toggle:first-child { border-radius: 8px 0 0 8px; }
+  .modes .toggle:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
   .remove { color: var(--error); }
   /* One tile per position of the sequence. */
   .tile {
@@ -288,10 +307,14 @@
   <span class="clock" id="clock"></span>
   <span class="latency" id="latency" hidden></span>
   <span class="pending" id="pending" hidden>↻ change comes in at the next bar</span>
+  <span class="modes" role="group" aria-label="How to draw the piece">
+    <button id="mode-grid" type="button" class="toggle" aria-pressed="true">Grid</button>
+    <button id="mode-rings" type="button" class="toggle" aria-pressed="false">Rings</button>
+  </span>
   <button id="prev" type="button" aria-label="Earlier bars">&larr;</button>
   <span class="window" id="window"></span>
   <button id="next" type="button" aria-label="Later bars">&rarr;</button>
-  <span class="hint" id="hint">Tap a beat to switch it off or on · tap the strip along the top to jump · space plays</span>
+  <span class="hint" id="hint">Tap a beat to switch it off or on · tap the strip along the top (or the ring around the outside) to jump · space plays</span>
 </div>
 
 <!-- Warnings and errors appear here. role="status" makes screen readers
@@ -305,7 +328,7 @@
 <!-- Legend marks are grey on purpose: they describe a shape, and a coloured
      one would suggest it belonged to a particular layer. -->
 <div class="legend" aria-hidden="true">
-  <span><svg viewBox="0 0 22 16"><circle cx="11" cy="8" r="6.5" fill="var(--ink-2)"/></svg>note — higher in the row is higher in pitch</span>
+  <span><svg viewBox="0 0 22 16"><circle cx="11" cy="8" r="6.5" fill="var(--ink-2)"/></svg>note — higher up its row, or further out its ring, is higher in pitch</span>
   <span><svg viewBox="0 0 22 16"><path d="M6 3 L16 13 M16 3 L6 13" stroke="var(--ink-2)" stroke-width="3" stroke-linecap="round"/></svg>drum hit</span>
   <span><svg viewBox="0 0 22 16"><rect x="5" y="6" width="12" height="5" rx="1" fill="var(--ink-2)"/></svg>rest — moves with the sequence</span>
   <span><svg viewBox="0 0 22 16"><rect x="2" y="1" width="18" height="14" rx="3" fill="url(#hatch)" stroke="var(--muted)" stroke-opacity=".5"/></svg>beat switched off — the same beat every time round</span>

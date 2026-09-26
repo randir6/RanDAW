@@ -18,6 +18,7 @@ import { finishMix, renderAudio } from "./render.js";
 import { schedule } from "./schedule.js";
 import { pageWithPiece } from "./share.js";
 import { formatSpec, readSpec, SpecError, upgradeSpec } from "./spec.js";
+import { createRingView } from "./rings.js";
 import { createView, MAX_LAYERS, NARROWEST, WIDEST } from "./view.js";
 import { decodeWav, encodeWav16 } from "./wav.js";
 
@@ -106,6 +107,31 @@ const player = createPlayer();
 const voices = new Map();
 const MAX_VOICES = 300;
 let view = null;  // the drawing, or null when the piece has too many layers
+
+// Which drawing: "grid" (rows, view.js) or "rings" (rings.js). ?view=rings in
+// the address picks one; otherwise the last one chosen in this browser. A
+// convenience only, so a browser that will not store it just gets the grid.
+const DRAWINGS = { grid: createView, rings: createRingView };
+const DRAWING_KEY = "randaw-drawing";
+let drawing = new URLSearchParams(location.search).get("view");
+if (!Object.hasOwn(DRAWINGS, drawing ?? "")) {
+  try {
+    drawing = localStorage.getItem(DRAWING_KEY);
+  } catch {
+    drawing = null;
+  }
+}
+if (!Object.hasOwn(DRAWINGS, drawing ?? "")) drawing = "grid";
+
+function chooseDrawing(name) {
+  drawing = name;
+  try {
+    localStorage.setItem(DRAWING_KEY, name);
+  } catch {
+    // Not stored; it still changes for now.
+  }
+  show();
+}
 
 // Check a spec and work out everything the drawing needs -- or say why not.
 // Returns null (having said why) if the piece cannot be used. Quick: this is
@@ -295,7 +321,7 @@ function show() {
     $("text-grid").textContent = "";
   } else {
     $("figure").hidden = false;
-    view = createView(derived, $("stage"), {
+    view = DRAWINGS[drawing](derived, $("stage"), {
       onBeat: (layer, beat) => edit((s) => toggleBeat(s, layer, beat)),
       onSeek: (bars) => { player.seek(bars); refresh(); },
       // Narrow screens show fewer bars at once, so each one is wider.
@@ -306,6 +332,7 @@ function show() {
     $("text-grid").textContent = view.textGrid();
   }
   $("prev").disabled = $("next").disabled = view === null || view.pages === 1;
+  for (const name of Object.keys(DRAWINGS)) $(`mode-${name}`).setAttribute("aria-pressed", String(name === drawing));
 
   renderEditor({
     container: $("editor"),
@@ -426,6 +453,8 @@ window.addEventListener("resize", () => {
 // --- Controls ---------------------------------------------------------------------
 
 $("play").addEventListener("click", togglePlay);
+$("mode-grid").addEventListener("click", () => chooseDrawing("grid"));
+$("mode-rings").addEventListener("click", () => chooseDrawing("rings"));
 $("prev").addEventListener("click", () => changePage(-1));
 $("next").addEventListener("click", () => changePage(1));
 

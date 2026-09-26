@@ -9,6 +9,11 @@
 // how high it sits, which layers coincide -- arrives already worked out in
 // `d`, the derived data from derive.js. If drawing ever seems to need a
 // musical decision, that decision belongs in the engine instead.
+//
+// rings.js draws the same piece another way; what the two share is in
+// drawing.js.
+
+import { addHatch, barsLabel, drawLayerLabel, el, layerClass, lightUp, pitchWords, textGrid, tip } from "./drawing.js";
 
 // The visualiser shows at most this many layers, for now. The limit belongs
 // to the drawing ONLY: the engine and the audio are unlimited, and the rows
@@ -26,26 +31,6 @@ export const WIDEST = 1600;
 export const NARROWEST = 900;
 const GUTTER = 210, RIGHT = 22, TOP = 48, ROW_H = 120, ROW_GAP = 12;
 const MIN_CELL = 20;      // narrower than this and a labelled note will not fit
-const GUTTER_CHARS = 25;  // about as many small characters as fit in the gutter
-const GLOW = 0.13;        // seconds a note stays lit after it starts
-
-// SVG elements need their own "namespace", hence the long address passed to
-// createElementNS -- a quirk of how browsers tell SVG from HTML.
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function el(name, attrs = {}, parent = null, text = null) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-  if (text !== null) node.textContent = text;
-  if (parent) parent.appendChild(node);
-  return node;
-}
-
-// A hover tooltip. The browser shows an SVG <title> when the pointer rests on
-// its parent, with no code needed to position it.
-function tip(node, text) {
-  el("title", {}, node, text);
-}
 
 // Set up a drawing of one piece in the given <svg>. Returns an object whose
 // methods the page calls: show(t) to move the playhead, highlight() to mark a
@@ -66,6 +51,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
   const nLayers = d.layers.length;
   const H = TOP + nLayers * (ROW_H + ROW_GAP) + 6;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.classList.remove("fit");  // see rings.js
 
   // How many bars to show side by side on one page. Up to four, but fewer
   // when a layer packs so many beats into a bar that four bars would squash
@@ -106,14 +92,6 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     return rowTop(layer) + pad + (1 - height) * (ROW_H - 2 * pad);
   };
 
-  function pitchWords(info, c) {
-    if (info.percussive) return "hit";
-    const semis = c.semitones >= 0 ? `+${c.semitones}` : `${c.semitones}`;
-    return info.pitch_kind === "degrees"
-      ? `degree ${c.label} of ${info.scale} (${semis} semitones)`
-      : `${semis} semitones`;
-  }
-
   let currentPage = -1;
   let picked = null;   // the highlighted sequence position: { layer, position }, or null
   let placed = [];     // [{layer, position, node}] for everything on the page that belongs to a position
@@ -128,13 +106,7 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     togethers = [];
     placed = [];
 
-    // The diagonal hatching used for switched-off beats.
-    const defs = el("defs", {}, svg);
-    const pat = el("pattern", {
-      id: "hatch", width: 7, height: 7, patternUnits: "userSpaceOnUse",
-      patternTransform: "rotate(45)",
-    }, defs);
-    el("line", { x1: 0, y1: 0, x2: 0, y2: 7, class: "hatch-line" }, pat);
+    addHatch(svg);
 
     // Drawn in layers, back to front: rows, then the lines joining
     // coincident notes, then the playhead, then the notes on top -- so a
@@ -146,33 +118,9 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
 
     // Rows, with each layer's name and description in the left gutter.
     for (let i = 0; i < nLayers; i++) {
-      const info = d.layers[i];
-      const g = el("g", { class: layerClass(i) }, back);
+      const g = el("g", { class: layerClass(d, i) }, back);
       el("rect", { x: 4, y: rowTop(i), width: W - 8, height: ROW_H, rx: 10, class: "row-bg" }, g);
-      el("circle", { cx: 22, cy: rowTop(i) + 26, r: 7, class: "swatch" }, g);
-      const name = el("text", { x: 36, y: rowTop(i) + 31, class: "name" }, g, info.name);
-      // Say why a layer is silent, in words as well as by fading it.
-      const why = info.mute && !info.solo ? "muted" : info.solo ? "solo" : info.audible ? "" : "silenced by solo";
-      if (why) el("tspan", { class: "state", dx: 8 }, name, why);
-      const kind = info.percussive ? "drum hits"
-        : info.pitch_kind === "degrees" ? `${info.scale} degrees` : "semitones";
-      const lines = [info.over === 1 ? `${info.beats} beats` : `${info.beats} beats over ${info.over} bars`];
-      // The sequence, after what kind of values it holds. A drum's sequence is
-      // only worth printing when it has rests in it -- otherwise it is just
-      // "x", which the row already shows.
-      if (!info.percussive || info.sequence_labels.includes("-")) {
-        lines.push(`${kind}: ${info.sequence_labels.join(" ")}`);
-      } else {
-        lines.push(kind);
-      }
-      if (info.active) lines.push(`on: ${info.active.join(" ")}`);
-      lines.forEach((text, n) => {
-        // The gutter is a fixed width, so a long line is cut short with "…"
-        // rather than running into the grid. Hovering shows it in full.
-        const short = text.length > GUTTER_CHARS ? `${text.slice(0, GUTTER_CHARS - 1)}…` : text;
-        const node = el("text", { x: 22, y: rowTop(i) + 56 + n * 20, class: "sub" }, g, short);
-        if (short !== text) tip(node, text);
-      });
+      drawLayerLabel(g, d.layers[i], 22, rowTop(i));
     }
 
     // The strip along the top: tap it to jump there. Drawn first, so the bar
@@ -209,9 +157,9 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
       const band = el("rect", {
         x: x0 + 1.5, y: rowTop(c.layer) + 5, width: Math.max(1, w - 3), height: ROW_H - 10,
         class: `band ${c.status}`, ...tappable,
-      }, el("g", { class: layerClass(c.layer) }, back));
+      }, el("g", { class: layerClass(d, c.layer) }, back));
       placed.push({ layer: c.layer, position: c.position, node: band });
-      const g = el("g", { class: layerClass(c.layer) }, front);
+      const g = el("g", { class: layerClass(d, c.layer) }, front);
 
       const where = `${info.name} · bar ${c.bar}, beat ${c.beat} of ${info.beats} · ${c.time.toFixed(2)} s`;
       if (c.status === "note") {
@@ -256,11 +204,6 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     applyHighlight();
   }
 
-  // A layer's colour class, plus "silent" when it cannot be heard.
-  function layerClass(i) {
-    return d.layers[i].audible === false ? `l${i} silent` : `l${i}`;
-  }
-
   // Outline every place one position of a layer's sequence lands on this
   // page. With a sequence longer or shorter than the beat count, those places
   // move each time round -- which is exactly what this makes visible.
@@ -303,45 +246,8 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
     const x = barX(barIndex - page * perPage) + frac * BAR_W;
     playhead.setAttribute("x1", x);
     playhead.setAttribute("x2", x);
-    for (const m of marks) m.node.classList.toggle("on", t >= m.time && t - m.time < GLOW);
-    for (const k of togethers) k.node.classList.toggle("on", t >= k.time && t - k.time < GLOW);
-  }
-
-  // "bars 5–8 of 12", for the page being shown.
-  function pageLabel() {
-    if (perPage === d.bars) return d.bars === 1 ? "bar 1" : `bars 1–${d.bars}`;
-    const first = currentPage * perPage + 1;
-    const last = Math.min(d.bars, first + perPage - 1);
-    return `${first === last ? `bar ${first}` : `bars ${first}–${last}`} of ${d.bars}`;
-  }
-
-  // The same grid written out as text, one line per layer per page, each
-  // bar between | marks. A layer over several bars shows, in each bar, the
-  // beats that start in it.
-  function textGrid() {
-    const nameWidth = Math.max(...d.layers.map((l) => l.name.length)) + 2;
-    const lines = [];
-    for (let page = 0; page < pages; page++) {
-      const firstBar = page * perPage + 1;
-      const lastBar = Math.min(d.bars, firstBar + perPage - 1);
-      lines.push(firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`);
-      for (let i = 0; i < nLayers; i++) {
-        const bars = [];
-        for (let bar = firstBar; bar <= lastBar; bar++) {
-          const beats = cellsByPage[page]
-            .filter((c) => c.layer === i && c.bar === bar)
-            .sort((a, b) => a.pulse - b.pulse)
-            .map((c) => (c.status === "note" ? c.label : c.status === "rest" ? "-" : "."));
-          bars.push(beats.join(" "));
-        }
-        // Silent layers (muted, or silenced by a solo) say so, as the drawing does.
-        const silent = d.layers[i].audible === false ? "  (silent)" : "";
-        lines.push(`  ${d.layers[i].name.padEnd(nameWidth)}| ${bars.join(" | ")} |${silent}`);
-      }
-      lines.push("");
-    }
-    lines.push("x = drum hit   - = rest   . = beat switched off");
-    return lines.join("\n");
+    lightUp(marks, t);
+    lightUp(togethers, t);
   }
 
   svg.setAttribute("aria-label",
@@ -351,8 +257,10 @@ export function createView(d, svg, { onBeat = null, onSeek = null, maxPerPage = 
   return {
     show,
     highlight,
-    pageLabel,
-    textGrid,
+    // "bars 5–8 of 12", for the page being shown.
+    pageLabel: () => barsLabel(currentPage * perPage + 1, perPage, d.bars),
+    // The same grid written out as text, a page to a block.
+    textGrid: () => textGrid(d, perPage),
     pages,
     width: W,
     maxPerPage,

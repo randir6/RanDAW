@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 91 checks, should all pass
+npm test                      # 99 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -69,6 +69,12 @@ so the groove never stops.
 - **Tap a beat** in the drawing to switch it off, or back on. It is then
   silent every time the layer comes round (`active`).
 - **Tap the strip along the top** of the drawing to jump there.
+- **Grid | Rings** switches how the piece is drawn. The grid runs each layer
+  left to right, and is the best way to read a sequence. Rings put each layer
+  on a ring going round like a clock -- one turn is a bar, or two for layers
+  over 2 bars -- so 3 against 4 shows as a triangle against a square. Taps
+  work the same in both; in rings, the ring around the outside is the one to
+  tap to jump. The page remembers which you chose.
 - **The Piece panel**: the piece's name (used for saved files), undo and
   redo, **Tempo** (BPM), **Base** (beats per bar), **Click** (hear the base
   beats, like a metronome — off unless you turn it on), **Bars** (how long
@@ -229,6 +235,8 @@ web/
     numbers.js       the arithmetic that has to match Python's exactly
     derive.js        everything a drawing needs, worked out from a Piece
     view.js          drawing a piece as a grid of beats. Draws only.
+    rings.js         drawing it as rings, one per layer, like a clock. Draws only.
+    drawing.js       what the two drawings share
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
     draft.js         keeping the piece in the browser between visits

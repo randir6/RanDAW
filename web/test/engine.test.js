@@ -14,13 +14,14 @@ import { pieceToDerived, pieceToExport } from "../src/derive.js";
 import { makeLayer } from "../src/layer.js";
 import { divmod, roundHalfEven, roundTo, toFixedHalfEven } from "../src/numbers.js";
 import { buildPiece } from "../src/piece.js";
+import { pitchShift, prepareSample, resampleLinear } from "../src/audio.js";
 import { finishMix, renderAudio } from "../src/render.js";
 import { degreeToSemitones } from "../src/scales.js";
 import {
   CLICK_DOWNBEAT, CLICK_SAMPLE, grid, schedule, STATUS_INACTIVE, STATUS_NOTE, STATUS_REST,
 } from "../src/schedule.js";
 import { formatSpec, readSpec, SpecError, upgradeSpec } from "../src/spec.js";
-import { decodeWav, encodeWav16 } from "../src/wav.js";
+import { decodeWav, encodeWav16, toInt16 } from "../src/wav.js";
 import { fingerprint, LIBRARY, renderWav, WEB } from "./helpers.js";
 
 const SAMPLES = LIBRARY.keys();
@@ -282,6 +283,96 @@ test("WAV files survive a round trip, and stereo is averaged to mono", () => {
   assert.equal(stereo.channels.length, 2);
   assert.equal(stereo.sampleRate, 48000);
   assert.deepEqual([...stereo.channels[1]], [-0.25, -0.25]);
+});
+
+// --- The sound --------------------------------------------------------------------
+//
+// What correct sound IS, stated directly, so that a better resampler or
+// encoder can be judged against these rather than against the old bytes.
+
+// A sine tone: `seconds` long, at `hz`, sampled at `rate`.
+const tone = (hz, seconds = 1, rate = 44100) =>
+  Float32Array.from({ length: Math.round(seconds * rate) }, (_, i) => Math.sin((2 * Math.PI * hz * i) / rate));
+
+// A tone's pitch, measured: count its upward zero crossings, placing each
+// exactly by drawing a line between the samples either side of it.
+function measureHz(sound, rate = 44100) {
+  const crossings = [];
+  for (let i = 1; i < sound.length; i++) {
+    if (sound[i - 1] < 0 && sound[i] >= 0) crossings.push(i - 1 + -sound[i - 1] / (sound[i] - sound[i - 1]));
+  }
+  return ((crossings.length - 1) * rate) / (crossings.at(-1) - crossings[0]);
+}
+// How far apart two pitches are, in cents: hundredths of a semitone.
+const cents = (a, b) => 1200 * Math.log2(a / b);
+
+test("a pitch shift of 0 leaves the sound exactly as it was", () => {
+  const a = tone(440, 0.1);
+  assert.equal(pitchShift(a, 0), a);
+});
+
+test("pitch shifts land within a cent of equal temperament", () => {
+  const a = tone(440);
+  for (const semitones of [-12, -5, -1, 1, 7, 12, 19]) {
+    const want = 440 * 2 ** (semitones / 12);
+    const got = measureHz(pitchShift(a, semitones));
+    assert.ok(Math.abs(cents(got, want)) < 1, `${semitones}: ${got.toFixed(2)} Hz, wanted ${want.toFixed(2)}`);
+  }
+});
+
+test("pitch and length move together, like changing a record's speed", () => {
+  const a = tone(440);  // 44100 samples
+  assert.equal(pitchShift(a, 12).length, 22050);
+  assert.equal(pitchShift(a, -12).length, 88200);
+  assert.equal(pitchShift(a, 7).length, Math.round(44100 / 2 ** (7 / 12)));
+});
+
+test("resampling keeps a straight line straight and starts where the sound starts", () => {
+  const ramp = Float32Array.from({ length: 101 }, (_, i) => i / 100);
+  for (const length of [51, 150, 333]) {
+    const out = resampleLinear(ramp, length);
+    assert.equal(out.length, length);
+    assert.equal(out[0], 0);
+    // Position i of the new sound sits at i/length of the way along, where
+    // the ramp's value is (i/length) x 1.01 -- as long as it is inside it.
+    for (let i = 0; i < length; i++) {
+      const want = Math.min(1, (i / length) * 1.01);
+      assert.ok(Math.abs(out[i] - want) < 1e-6, `${length}: position ${i} is ${out[i]}, wanted ${want}`);
+    }
+  }
+});
+
+test("a sample recorded at another rate keeps its pitch and length", () => {
+  const at48k = { channels: [tone(1000, 1, 48000)], sampleRate: 48000 };
+  const ready = prepareSample(at48k, 44100);
+  assert.equal(ready.length, 44100);
+  assert.ok(Math.abs(cents(measureHz(ready), 1000)) < 1);
+});
+
+test("notes at the same moment add together, each scaled by its layer's gain", () => {
+  const library = new Map([["one.wav", { channels: [new Float32Array([1, 0.5])], sampleRate: 44100 }]]);
+  const events = [
+    { pulse: 0, semitones: 0, sample: "one.wav", gain: 0.25 },
+    { pulse: 0, semitones: 0, sample: "one.wav", gain: 0.5 },
+    { pulse: 1, semitones: 0, sample: "one.wav", gain: 1 },
+  ];
+  const mix = renderAudio(events, { totalPulses: 2, totalSamples: 4, sampleRate: 44100, library });
+  assert.deepEqual([...mix], [0.75, 0.375, 1, 0.5]);
+});
+
+test("16-bit samples: silence is 0, full scale is the extremes, and nothing is off by more than a step", () => {
+  assert.deepEqual([0, 0.5, -0.5, 1, -1, 2, -2].map(toInt16), [0, 16384, -16384, 32767, -32768, 32767, -32768]);
+  // The rule: round down to the step below, except that a value within
+  // 2^-17 of a step counts as reaching it (see wav.js for why).
+  assert.equal(toInt16(1 / 32768), 1);
+  assert.equal(toInt16(1 / 32768 - 2 ** -33), 1);
+  assert.equal(toInt16(1 / 32768 - 2 ** -30), 0);
+  // Any value survives writing and reading back to within one step.
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const values = Float32Array.from({ length: 20000 }, random);
+  const back = decodeWav(encodeWav16(values, 44100)).channels[0];
+  values.forEach((v, i) => assert.ok(Math.abs(back[i] - v) < 1 / 32768, `${v} came back as ${back[i]}`));
 });
 
 // --- Specs ----------------------------------------------------------------------

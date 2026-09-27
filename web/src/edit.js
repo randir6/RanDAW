@@ -232,8 +232,11 @@ export function switchPitchKind(spec, index, kind) {
     delete layer.scale;
     delete layer.root;
   } else {
-    // With no scale anywhere yet, start from major.
-    if (effectiveScale(spec, layer) === null) layer.scale = "major";
+    // With no scale anywhere yet, start the whole piece in major. Setting it
+    // on the piece rather than the layer keeps the piece's Scale menu in
+    // charge: a layer's own scale would override it, and changing the
+    // piece's scale would then do nothing to this layer.
+    if (effectiveScale(spec, layer) === null) next.scale = "major";
     const scale = effectiveScale(next, layer);
     const root = effectiveRoot(next, layer);
     layer.degrees = layer.notes.map((n) => (n === REST ? REST : nearestDegree(n, scale, root)));

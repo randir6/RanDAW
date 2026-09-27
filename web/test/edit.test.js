@@ -103,9 +103,20 @@ test("notes to degrees snaps each pitch to the scale, and back again exactly", (
   // 1 semitone is not in C major: it snaps down to 0, degree 1.
   assert.deepEqual(asDegrees.layer[0].degrees, [1, 3, 5, 8, 1, "-"]);
   assert.deepEqual(switchPitchKind(asDegrees, 0, "notes").layer[0].notes, [0, 4, 7, 12, 0, "-"]);
-  // With no scale anywhere, the layer gets one so its degrees mean something.
+  // With no scale anywhere, the piece gets one so the degrees mean something,
+  // and the layer follows it rather than pinning a scale of its own.
   const bare = { bars: 1, layer: [{ beats: 1, notes: [0], sample: "kick.wav" }] };
-  assert.equal(switchPitchKind(bare, 0, "degrees").layer[0].scale, "major");
+  const switched = switchPitchKind(bare, 0, "degrees");
+  assert.equal(switched.scale, "major");
+  assert.equal(switched.layer[0].scale, undefined);
+
+});
+
+test("after switching to degrees, changing the piece's scale changes the pitches", () => {
+  const tresillo = readJson(WEB, "examples", "tresillo.json");
+  const asDegrees = switchPitchKind(tresillo, 3, "degrees");
+  const pitches = (s) => builds(s).layers[3].notes;
+  assert.notDeepEqual(pitches(setSetting(asDegrees, "scale", "minor")), pitches(asDegrees));
 });
 
 test("every example still builds after each kind of edit", () => {

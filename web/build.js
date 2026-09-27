@@ -43,7 +43,7 @@ const EXAMPLE_NOTES = {
   tresillo: "3-3-2 groove with a 3-beat hat cutting across it",
   seven: "7 grouped 3-2-2, with a 4-beat tom pulling against it",
   spans: "7 and 13 beats, each spread over 2 bars of 4",
-  phase_study: "5 beats against 7 notes, 7 bars to come back round",
+  phase_study: "5 beats against 7 notes, 14 bars to come back round",
   sparse_dub: "space rather than density",
   scales: "change one word and the whole piece re-harmonises",
   rests: "rests that travel through the bar",

@@ -644,6 +644,28 @@ into a DAW or looper.
   its time, with nothing stray; a fine grid keeping its tempo; every example
   a whole number of repeats. The first three fail against the old engine.
 
+## Retiring the Python answer key
+
+Once loops were exact, the Python answers only checked the older timing,
+which the page never uses -- yet they were the only checks on pitch
+shifting, mixing and the 16-bit output, and on 61 kinds of broken piece.
+
+- **A new answer key, recorded from this engine** (`test/answers.test.js`,
+  `test/record_answers.js`): every example and the same 600 random pieces,
+  in today's words, with verdict, grid and WAV fingerprints and each
+  refusal's message. Recorded while the Python checks still passed.
+- **Checks on the sound itself:** pitch shifts within a cent of equal
+  temperament, pitch and length moving together, resampling, other sample
+  rates, mixing by gain, and the 16-bit rule. A wrong semitone, an unrounded
+  gain and a different 16-bit rounding were each planted and each caught.
+- **Then the Python checks and the older timing path went.** `buildPiece`
+  reads only today's words; `upgradeSpec` converts older pieces, as the page
+  already did. Every accepted piece's grid and audio were unchanged by the
+  removal; 12 refusal messages for unconvertible older settings (a
+  `cycle_duration` of 0) changed, to say what to write instead, and were
+  re-recorded. About 500 kB of fixtures went.
+- **Checks: 119.**
+
 **Recommended next:** hosting, so the page can be tried on the iPad with a real looper,
 then sections.
 

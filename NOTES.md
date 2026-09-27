@@ -46,8 +46,10 @@ Now an explicit choice: `wav.js` writes 16-bit PCM itself (it was a library
 default in the Python version). Right for the downstream targets (Koala,
 Loopy). The rounding rule it uses is the Python library's, copied exactly so
 the two versions made identical files; it is slightly odd (round to 32 bits,
-keep the top 16) and could be simplified once the Python version is retired,
-at the cost of changing the last bit of some samples.
+keep the top 16). Now the Python checks are retired it could be simplified
+to plain rounding, changing the last bit of some samples: a deliberate
+change, so re-record the answer key (see README, "Checking nothing is
+broken").
 
 ### The drawing scrolls sideways on a phone held upright
 Since phase 11, narrow screens show two bars per page and the drawing keeps
@@ -60,15 +62,14 @@ Consequence: adding layers or stacking overlapping tails can clip, and the fix
 is to dial gains down yourself. The clipping warning suggests a specific value
 that resolves it.
 
-### Older pieces keep the old timing
-*Fixed for today's pieces* (see Decisions, "Exact loops"). Pieces in the older
-words (`cycle_duration`, `pulse_duration`, `loops`) are still timed on a grid
-of whole-sample pulses, so the recorded Python answers still match to the
-byte. That grid made a bar only roughly the length asked for -- 8 bars of a
-2.4 s bar came out 15 ms long, enough to drift a 16th note against a DAW in
-about three minutes -- and at very fine grids (3/4/5/7/11/13 in a 2 s bar) it
-collapsed the bar to 1.36 s, with a warning past 1%. The page never meets
-this: it upgrades an older piece to tempo and bars as it opens it.
+### Older pieces sound a hair different once upgraded
+Beats used to snap to a grid of whole-sample pulses, which made a bar only
+roughly the length asked for -- 8 bars of a 2.4 s bar came out 15 ms long,
+enough to drift a 16th note against a DAW in about three minutes -- and at
+very fine grids (3/4/5/7/11/13 in a 2 s bar) collapsed the bar to 1.36 s.
+Fixed (see Decisions, "Exact loops"), and that grid is gone. A piece saved in
+the older words is upgraded as it opens and played with today's timing, so it
+can differ from how it sounded when saved by up to a sample per beat.
 
 ## Open questions
 
@@ -403,6 +404,8 @@ Design notes from thinking it through, so the work does not start cold:
   Python answers still match to the byte. The page upgrades an older piece
   to tempo/base/bars as it opens it; saying the same thing both ways in one
   piece is refused. Saved files are now format version 2; version 1 reads.
+  *(Since retired: older pieces are now only upgraded, never timed the old
+  way -- see "The answer key is the engine's own" below.)*
 - **The click is off unless asked for**, and is its own sample made by
   `make_samples.py` (added last, so the other sounds are unchanged). It is
   sound only: it is not a layer, is not drawn, and does not count as a layer
@@ -412,10 +415,19 @@ Design notes from thinking it through, so the work does not start cold:
   time (`sampleAt` in render.js). A loop at 100 BPM stays in time with a DAW
   at 100 BPM however often it repeats. Pulses still keep the musical
   arithmetic exact, but no longer have to be a whole number of samples, so
-  very fine grids keep their tempo too. Only pieces in the older words keep
-  the whole-sample grid, which is how the Python answers still match.
+  very fine grids keep their tempo too.
 - **Examples loop on their whole pattern.** Each example is a whole number of
   its pattern's repeats, so its WAV goes round the way the tool means loops
   to. A check keeps it so for any example added later.
+- **The answer key is the engine's own.** The Python answers did their job
+  -- proving the port exact -- and were retired once the exact-loops change
+  meant they only checked a timing path the page never used. In their place:
+  `answers.json`, recorded from this engine (every example and the same 600
+  random pieces, in today's words, refusals with their messages), and checks
+  in engine.test.js on what correct sound is. The answer key catches any
+  change; the sound checks say whether a change is right. Recorded while the
+  Python checks still passed, so it starts from proven output. Retiring them
+  removed the older timing path from `buildPiece`; `upgradeSpec` is now the
+  only thing that reads the older words.
 - **The page prefers a whole span per page**: with a layer over 2 bars, it
   shows 4 or 2 bars at a time rather than 3, so a span is not split.

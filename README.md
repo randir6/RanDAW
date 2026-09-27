@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 111 checks, should all pass
+npm test                      # 119 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -218,9 +218,11 @@ turns them into today's as it opens them (`upgradeSpec` in `spec.js`):
 | cycle | bar |
 | step (of a sequence) | position |
 
-A piece may use one form or the other, not both. The engine still reads the
-older keys directly and times them exactly as before, which is how the
-checks can compare against answers recorded long ago.
+A piece may use one form or the other, not both. The engine itself reads
+only today's words: the page upgrades an older piece whenever it opens one.
+An upgraded piece can sound a hair different from when it was saved -- the
+tempo is rounded to three places, and beats are now placed at their exact
+times -- by at most about a sample per beat.
 
 ## How the code is laid out
 
@@ -283,8 +285,9 @@ ways JavaScript and Python disagree about arithmetic.
 Phases 1–9 were built in Python; phase 10 moved the engine into the page,
 and phase 11 retired the Python version once the page had been tried on a
 phone. It is all in git history up to commit `3fffdeb` (`git checkout 3fffdeb`
-to see it). What it did is pinned down by the recorded answers in
-`web/test/fixtures/`, which the JavaScript still has to match.
+to see it). The JavaScript engine was held to its answers byte for byte until
+it matched exactly; those checks were then retired, and the answer key in
+`web/test/fixtures/` is now the JavaScript engine's own.
 
 `make_samples.py` is the one Python file left: the record of how the
 built-in sounds were made (`pip install -r requirements.txt`, then
@@ -304,7 +307,7 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 **Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
 is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
-(not merged, no pull request). All 111 checks pass.
+(not merged, no pull request). All 119 checks pass.
 
 ### What works
 
@@ -355,7 +358,7 @@ loops".
 git checkout claude/polyrhythm-vision-setup-jfos3r
 cd web
 node build.js      # -> dist/randaw.html; open it in a browser
-npm test           # 111 checks; the browser ones need Chromium (CHROMIUM=path)
+npm test           # 119 checks; the browser ones need Chromium (CHROMIUM=path)
 ```
 
 Then read `PHASES.md` from "Phase 12" down, and the Open questions and
@@ -377,14 +380,17 @@ remaking the built-in sounds (`make_samples.py`).
 
 `npm test` (in `web/`) runs seven sets of checks:
 
-- **engine** — the rules, stated directly: timing, layers over several
-  bars, the click, rests, switched-off beats, wrapping tails, reading,
-  saving and upgrading pieces, and the traps specific to JavaScript.
-- **parity** — the answer key. The Python engine's results for the six
-  original examples and 600 random pieces were recorded in `test/fixtures/`,
-  and the JavaScript engine must match them exactly: same verdict, same grid,
-  byte-identical WAV. They are in the older words, so they also prove older
-  pieces still sound exactly as they did.
+- **engine** — the rules, stated directly: timing and exact loop length,
+  layers over several bars, the click, rests, switched-off beats, wrapping
+  tails, reading, saving and upgrading pieces, the traps specific to
+  JavaScript -- and what correct sound is: pitch shifts within a cent,
+  resampling, mixing, and 16-bit output.
+- **answers** — the answer key. Every example and 600 random pieces (about
+  a third broken on purpose, in 61 ways) with the engine's verdict, grid and
+  WAV fingerprints, and each refusal's exact message, in
+  `test/fixtures/answers.json`. Any change to any of them fails. When a
+  change is deliberate -- a better resampler, say -- re-record with
+  `node test/record_answers.js` and read the diff before committing.
 - **edit** — every change the editor can make, checked without a browser.
 - **fuzz** — thousands of random edits from a fixed seed; nothing may crash,
   and rules that must always hold (one cell per beat, solo beats mute,

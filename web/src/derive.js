@@ -159,7 +159,6 @@ export function pieceToDerived(piece) {
     // The engine's own grid, for anyone checking the arithmetic. Nobody
     // composes in pulses.
     pulses_per_bar: perBar,
-    samples_per_pulse: piece.samplesPerPulse,
     pulse_duration: roundTo(piece.pulseDuration, 9),
     total_duration: roundTo(piece.totalDuration, 9),
     warnings: [...piece.warnings],

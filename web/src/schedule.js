@@ -35,16 +35,13 @@ export const CLICK_DOWNBEAT = 7;  // semitones up on beat 1: a fifth higher
 // cut in 7 each -- and in general beats / gcd(beats, over) per bar. (6 beats
 // over 2 bars is just 3 per bar, so it needs only 3.)
 //
-// `base`, when given, joins in too, so the base beats -- the click, and the
-// faint lines in the picture -- land on pulses as well. Older pieces are
-// timed without it (see buildPiece), which is why it is optional.
+// The base joins in too, so the base beats -- the click, and the faint lines
+// in the picture -- land on pulses as well.
 //
-// .reduce() folds a list down to one value, here by taking the lcm of the
-// running answer with each layer's need in turn.
-export function pulsesPerBar(layers, base = null) {
-  const layersNeed = layers.reduce(
-    (running, layer) => lcm(running, layer.beats / gcd(layer.beats, layer.over)), 1);
-  return base === null ? layersNeed : lcm(layersNeed, base);
+// .reduce() folds a list down to one value: here it starts from the base and
+// takes the lcm of the running answer with each layer's need in turn.
+export function pulsesPerBar(layers, base) {
+  return layers.reduce((running, layer) => lcm(running, layer.beats / gcd(layer.beats, layer.over)), base);
 }
 
 // Visit every beat of every layer across the piece, saying what happens

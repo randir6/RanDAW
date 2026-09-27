@@ -1,9 +1,9 @@
 // Checks on the engine's rules, stated directly.
 //
-// parity.test.js proves the engine does what the Python version did. These
-// say what that IS, in plain terms -- so the rules stay written down once the
-// Python version is gone, and a deliberate change to one of them (rests, say)
-// fails a check that names the rule rather than just a changed fingerprint.
+// answers.test.js catches any change at all to what the engine makes. These
+// say what it SHOULD make, in plain terms -- so a deliberate change to a rule
+// (rests, say) fails a check that names the rule rather than just a changed
+// fingerprint, and a change meant to improve the sound can be judged by them.
 
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -119,16 +119,12 @@ test("a very fine grid keeps its tempo instead of collapsing", () => {
   assert.equal(p.pulsesPerBar, 60060);
   assert.equal(p.totalDuration, 4);
   assert.deepEqual(p.warnings, []);
-  // An older piece asking for the same is still timed, and warned about, as before.
-  assert.equal(piece({ cycle_duration: 2, loops: 2, layer }).warnings.length, 1);
 });
 
 test("the base beats always land on the grid, so the click can sound on them", () => {
-  // A lone 3-beat layer on a 4-beat base needs the bar in 12 pulses. An
-  // older piece left the base out, and needed only 3.
+  // A lone 3-beat layer on a 4-beat base needs the bar in 12 pulses.
   const three = { beats: 3, notes: [0], sample: "kick.wav" };
   assert.equal(piece({ bars: 1, layer: [three] }).pulsesPerBar, 12);
-  assert.equal(piece({ loops: 1, layer: [three] }).pulsesPerBar, 3);
 });
 
 test("a layer's timing does not change when another layer is added", () => {
@@ -242,9 +238,23 @@ test("an older piece is upgraded to tempo, base and bars", () => {
   assert.equal(upgradeSpec(current), current);
 });
 
-test("an older piece and its upgrade sound identical when the tempo comes out exact", () => {
-  const old = JSON.parse(readFileSync(join(WEB, "test", "fixtures", "legacy_examples", "tresillo.json"), "utf8"));
-  assert.deepEqual(renderWav(upgradeSpec(old)).wav, renderWav(old).wav);
+test("an older piece plays once upgraded, and is refused if it cannot be", () => {
+  // tresillo as it was saved before phase 12.
+  const old = {
+    cycle_duration: 2.0, loops: 8,
+    layer: [
+      { beats: 8, notes: [0], sample: "kick.wav", gain: 0.75, active: [1, 4, 7] },
+      { beats: 3, notes: [0], sample: "hat.wav", gain: 0.2 },
+    ],
+  };
+  // The engine reads only today's words; upgrading gives the same piece.
+  refused(old, "cycle_duration is an older setting");
+  const p = piece(upgradeSpec(old));
+  assert.deepEqual([p.tempo, p.bars, p.barDuration], [120, 8, 2]);
+  // An older setting that makes no sense is left for the engine to refuse,
+  // saying what to write instead.
+  refused({ ...old, cycle_duration: 0 }, 'cycle_duration is an older setting, and 0 cannot be turned into today\'s; give "tempo"');
+  refused(upgradeSpec({ ...old, cycle_duration: 0 }), "cycle_duration is an older setting");
 });
 
 // --- Sound -------------------------------------------------------------------------

@@ -14,7 +14,7 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 107 checks, should all pass
+npm test                      # 111 checks, should all pass
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -35,7 +35,7 @@ The seven examples, in `web/examples/`:
 | `rests` | Rests that travel through the bar |
 | `seven` | 7 grouped 3-2-2 on a base of 7, with a 4-beat tom pulling against it |
 | `spans` | 7 and 13 beats, each spread over 2 bars of 4 |
-| `phase_study` | 5 beats against 7 notes — takes 7 bars to come back round |
+| `phase_study` | 5 beats against 7 notes, and 3 beats against 2 — 14 bars to come back round |
 | `sparse_dub` | Space rather than density |
 | `scales` | Change one word, the whole piece re-harmonises |
 
@@ -304,7 +304,7 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 **Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
 is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
-(not merged, no pull request). All 107 checks pass.
+(not merged, no pull request). All 111 checks pass.
 
 ### What works
 
@@ -319,7 +319,8 @@ is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
 - **Three drawings**, switched with Grid | Rings | Polygons, all tappable.
   The drawing allows for the delay of Bluetooth speakers and headphones
   where the browser reports it.
-- **Output:** a WAV that loops seamlessly, and the piece as a small `.json`.
+- **Output:** a WAV that loops seamlessly and is exactly the tempo's length,
+  so it stays in time in a DAW or looper; and the piece as a small `.json`.
 - **Sounds:** synthetic kick, snare, hat, tom; pluck, keys and marimba (all
   in A) and bell (E) for melodies; the click.
 
@@ -327,28 +328,26 @@ is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
 
 In rough order of how much they matter:
 
-1. **Exact loop length.** A file is the tempo's length only to within a few
-   milliseconds per bar (8 bars of `spans` come out 15 ms long), so a loop
-   can drift against a DAW at the same tempo. The fix is known and small-ish
-   -- place each beat at its exact fraction of the bar -- and is written up
-   in `NOTES.md`. Recommended next piece of work.
-2. **Did the drawing-delay fix work on your headphones?** While playing, a
+1. **Did the drawing-delay fix work on your headphones?** While playing, a
    note beside the clock should say "drawing delayed N ms to match your
    speakers". If it never appears on the iPad/iPhone, the browser there does
    not report the delay, and a manual setting would be the fallback.
-3. **Rest behaviour** -- rests travel with the sequence; should they, always?
+2. **Rest behaviour** -- rests travel with the sequence; should they, always?
    See Open questions in `NOTES.md`.
-4. **Sections** (phase 13): variation across bars, e.g. four 4-bar sections
+3. **Sections** (phase 13): variation across bars, e.g. four 4-bar sections
    in a 16-bar file. The words are settled now; the design notes are in
    `NOTES.md`.
-5. **Your own samples** in the page -- where they are kept, how big, whether
+4. **Your own samples** in the page -- where they are kept, how big, whether
    "Save page" carries them. Real recordings would also want leading silence
    trimmed automatically, and maybe a per-layer nudge for feel.
-6. **Hosting**, so the iPad can open the page from an address. Deliberately
+5. **Hosting**, so the iPad can open the page from an address. Deliberately
    later.
-7. Small ones: the `rests` example is 6 bars of a pattern that repeats every
-   21 (the page offers "Use 21 bars"); more drawings were floated (a
-   scrolling timeline like a DAW's arrangement view).
+6. Small ones: more drawings were floated (a scrolling timeline like a DAW's
+   arrangement view).
+
+**Done since parking:** loops are now exactly the tempo's length, and every
+example is a whole number of its pattern's repeats -- see PHASES.md, "Exact
+loops".
 
 ### Picking it up again
 
@@ -356,7 +355,7 @@ In rough order of how much they matter:
 git checkout claude/polyrhythm-vision-setup-jfos3r
 cd web
 node build.js      # -> dist/randaw.html; open it in a browser
-npm test           # 107 checks; the browser ones need Chromium (CHROMIUM=path)
+npm test           # 111 checks; the browser ones need Chromium (CHROMIUM=path)
 ```
 
 Then read `PHASES.md` from "Phase 12" down, and the Open questions and

@@ -64,6 +64,64 @@ test("the tempo and the base set the bar", () => {
   assert.deepEqual([p.tempo, p.base, p.barDuration, p.click], [120, 4, 2, false]);
 });
 
+test("a file is exactly as long as its bars at its tempo, so it loops in time with a DAW", () => {
+  // 13 over 2 bars against 7 over 2 at 100 BPM: 364 pulses per bar, which
+  // do not divide a 2.4 s bar's 105,840 samples. Timed on a whole-sample
+  // pulse grid (as older pieces are) the 8 bars came out 15 ms long.
+  const spec = JSON.parse(readFileSync(join(WEB, "examples", "spans.json"), "utf8"));
+  const { piece: p, wav } = renderWav(spec);
+  assert.equal(p.totalSamples, 8 * 2.4 * 44100);
+  assert.equal(decodeWav(wav).channels[0].length, 8 * 2.4 * 44100);
+  assert.equal(p.totalDuration, 19.2);
+  assert.equal(p.barDuration, 2.4);
+  // A tempo whose bar is not a whole number of samples: the file is rounded
+  // once, to the nearest sample, rather than a little on every pulse.
+  const odd = piece({ tempo: 109.091, bars: 7, layer: [{ beats: 5, notes: [0], sample: "kick.wav" }] });
+  assert.equal(odd.totalSamples, Math.round((7 * 4 * 60 * 44100) / 109.091));
+});
+
+test("every example loops on its whole pattern, not part-way through it", () => {
+  // An example is the first thing a person hears; its WAV should loop the
+  // way the tool means loops to work.
+  for (const file of readdirSync(join(WEB, "examples"))) {
+    const p = piece(JSON.parse(readFileSync(join(WEB, "examples", file), "utf8")));
+    const { repeat_bars: repeat } = pieceToDerived(p);
+    assert.equal(p.bars % repeat, 0, `${file}: ${p.bars} bars of a pattern that repeats every ${repeat}`);
+  }
+});
+
+test("every note starts on the sample nearest its exact time", () => {
+  // A one-sample click as the sound, so each note shows up in the mix as a
+  // single non-zero sample exactly where it was placed.
+  const library = new Map([["tick.wav", { channels: [new Float32Array([1])], sampleRate: 44100 }]]);
+  const layers = [7, 13, 5, 11].map((beats, i) => ({ beats, over: 1 + (i % 2), notes: [0], sample: "tick.wav" }));
+  const p = buildPiece({ tempo: 97, bars: 4, layer: layers }, { samples: ["tick.wav"] });
+  const mix = renderAudio(schedule(p), { ...p, library });
+  const events = schedule(p);
+  for (const e of events) {
+    const exact = (e.pulse / p.totalPulses) * p.totalDuration * p.sampleRate;
+    const at = Math.round(exact);
+    assert.ok(Math.abs(at - exact) <= 0.5);
+    assert.ok(mix[at] >= 1, `layer ${e.layer} beat ${e.beat}: nothing at sample ${at}`);
+  }
+  // Nothing anywhere else: each non-zero sample is one of those notes.
+  const placed = new Set(events.map((e) => Math.round((e.pulse / p.totalPulses) * p.totalSamples)));
+  mix.forEach((value, i) => { if (value !== 0) assert.ok(placed.has(i), `stray sound at sample ${i}`); });
+});
+
+test("a very fine grid keeps its tempo instead of collapsing", () => {
+  // 3, 4, 5, 7, 11 and 13 need 60,060 pulses in a 2 s bar -- under 1.5
+  // samples each. On a whole-sample grid that rounded down to 1 and shrank
+  // the bar to 1.36 s; placing beats at their exact times has no such limit.
+  const layer = [3, 4, 5, 7, 11, 13].map((beats) => ({ beats, notes: [0], sample: "hat.wav" }));
+  const p = piece({ tempo: 120, bars: 2, layer });
+  assert.equal(p.pulsesPerBar, 60060);
+  assert.equal(p.totalDuration, 4);
+  assert.deepEqual(p.warnings, []);
+  // An older piece asking for the same is still timed, and warned about, as before.
+  assert.equal(piece({ cycle_duration: 2, loops: 2, layer }).warnings.length, 1);
+});
+
 test("the base beats always land on the grid, so the click can sound on them", () => {
   // A lone 3-beat layer on a 4-beat base needs the bar in 12 pulses. An
   // older piece left the base out, and needed only 3.

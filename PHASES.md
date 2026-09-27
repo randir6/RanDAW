@@ -611,6 +611,36 @@ click and spans too.
   fails after 60 s instead of waiting for ever (one run hung under load).
 - **Checks:** 107.
 
+---
+
+## Melodic layers — easier to write
+
+The page was good for drums and hard work for melodies. Three changes:
+
+- **The layer card is split into Rhythm and Melody.** The head keeps what
+  the whole layer is (mute, solo, sample, gain, duplicate, remove); Rhythm
+  holds beats, over and the On row; Melody holds the pitch settings, the
+  sequence and the keypad. A drum layer's section is headed Hits and its
+  pitch settings fold away until asked for.
+- **The keypad is a one-octave piano.** For degrees, keys in the scale carry
+  their degree and the rest are greyed, so the scale's shape shows; 1, 3, 5
+  are underlined in seven-note scales. For semitones every key plays. The
+  built-in melodic sounds have known pitches (`SAMPLE_PITCH` in
+  `scales.js`), so their keys, and the position being edited, are named:
+  A3, F♯4. Other samples are laid out as if they were a C, unnamed.
+- **Notes can follow hits** (`"follow": "hits"`): only beats that sound move
+  the sequence on, so switching a beat off changes a melody's rhythm rather
+  than cutting a note out. Was the `notes_follow` backlog item. Left out, a
+  layer follows beats exactly as before, so every older piece and the
+  recorded Python answers are unchanged. The page sets `hits` when a layer
+  is switched to scale degrees; the choice is offered beside the On row.
+  How long a layer takes to repeat allows for it.
+
+**Checks:** 116 -- the follow rules, stated directly (every note in turn, a
+rest still takes its turn, identical sound with every beat on, repeat
+lengths); the edit; and in the browser, the keyboard's keys and names, the
+chromatic keypad, the follow choice and the folding.
+
 **Parked here** (26 September 2026). What is waiting on decisions, in order,
 is in README.md under "Where things stand". The recommended next step is
 exact loop length (see NOTES.md, "The file is not exactly the tempo's

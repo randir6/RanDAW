@@ -54,7 +54,7 @@ export const TOP_LEVEL_KEYS = [
   "tempo", "base", "bars", "click", "sample_rate", "scale", "root", "layer", ...LEGACY_KEYS,
 ];
 export const LAYER_KEYS = [
-  "beats", "over", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo",
+  "beats", "over", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo", "follow",
 ];
 
 // Settings a spec may carry, and the kind of value each must be.
@@ -321,10 +321,13 @@ export function layerFromSpec(entry, { defaultScale = null, defaultRoot = 0, whe
     return value;
   });
 
+  // Which beats move the sequence on; makeLayer checks the value.
+  const follow = has(entry, "follow") ? entry.follow : "beats";
+
   try {
     // The same rules everywhere -- one place, no drift.
     return makeLayer({
-      beats: entry.beats, over, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo,
+      beats: entry.beats, over, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo, follow,
     });
   } catch (e) {
     // Only rule-breaking gets a friendly message. Anything else is a real

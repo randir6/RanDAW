@@ -70,7 +70,9 @@ export function drawLayerLabel(g, info, x, y, maxLines = 3) {
   } else {
     lines.push(kind);
   }
-  if (info.active) lines.push(`on: ${info.active.join(" ")}`);
+  // Following hits, a switched-off beat holds the melody back rather than
+  // cutting a note out of it; worth saying beside which beats are on.
+  if (info.active) lines.push(`on: ${info.active.join(" ")}${info.follow === "hits" ? " · notes follow hits" : ""}`);
   lines.slice(0, maxLines).forEach((text, n) => {
     // The space is a fixed width, so a long line is cut short with "…"
     // rather than running into the drawing. Hovering shows it in full.

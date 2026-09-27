@@ -130,9 +130,9 @@ are useful; the hard part is making the difference obvious in an editor.
 
 Possible outcomes, none decided: current behaviour is right and just needs
 demonstrating better; rests should be fixed to a beat like `active` is; or
-both behaviours are wanted and it becomes a per-layer choice. Related: the
-backlogged `notes_follow=beats|hits` item below is the same family of
-question.
+both behaviours are wanted and it becomes a per-layer choice. Related, and
+now built: a layer's `follow` (beats or hits) decides whether a switched-off
+beat holds the sequence back -- see the glossary in README.md.
 
 ## Backlog
 
@@ -184,13 +184,6 @@ Design notes from thinking it through, so the work does not start cold:
 - **Samples declaring their own root pitch.** Would let `key = "D"` mean
   something real rather than assuming every sample is a C, and would make
   `root` a musical setting rather than an offset.
-- **Note sequence that advances only on sounding beats.** Currently a note
-  belongs to its beat position, so skipping a beat silences that note. The
-  alternative advances the sequence only when a beat sounds, so every note
-  is heard in turn and skipping becomes a rhythmic mask over a melody that
-  keeps running. Both are musically useful and they are genuinely different.
-  Would need the note counter in `schedule()` to change, not just a filter,
-  so probably a per-layer choice like `notes_follow=beats|hits`.
 - **One-shot render mode.** Tails currently wrap so files loop seamlessly,
   which means a render opens with the tail of its own last note. Fine for
   loops, wrong for a one-shot. Needs a flag.

@@ -10,7 +10,7 @@ import { test } from "node:test";
 
 import {
   addLayer, duplicateLayer, formatSequence, insertPosition, MAX_OVER, parseSequence, removeLayer, removePosition,
-  scaleGains, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  scaleGains, setBeats, setFollow, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
 import { schedule } from "../src/schedule.js";
@@ -106,6 +106,19 @@ test("notes to degrees snaps each pitch to the scale, and back again exactly", (
   // With no scale anywhere, the layer gets one so its degrees mean something.
   const bare = { bars: 1, layer: [{ beats: 1, notes: [0], sample: "kick.wav" }] };
   assert.equal(switchPitchKind(bare, 0, "degrees").layer[0].scale, "major");
+});
+
+test("a layer made melodic follows its hits; following beats is written by leaving it out", () => {
+  const spec = { bars: 1, scale: "major", layer: [{ beats: 4, notes: [0, 4], sample: "pluck.wav" }] };
+  const melodic = switchPitchKind(spec, 0, "degrees");
+  assert.equal(melodic.layer[0].follow, "hits");
+  // Back to semitones keeps the choice; it is the layer's, not the notation's.
+  assert.equal(switchPitchKind(melodic, 0, "notes").layer[0].follow, "hits");
+  assert.equal(setFollow(melodic, 0, "beats").layer[0].follow, undefined);
+  assert.equal(setFollow(spec, 0, "hits").layer[0].follow, "hits");
+  // A layer that already chose keeps its choice when made melodic.
+  const chosen = { ...spec, layer: [{ ...spec.layer[0], follow: "beats" }] };
+  assert.equal(switchPitchKind(chosen, 0, "degrees").layer[0].follow, "beats");
 });
 
 test("every example still builds after each kind of edit", () => {

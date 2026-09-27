@@ -71,3 +71,36 @@ export function degreeToSemitones(degree, scale, root = 0) {
   const [octave, step] = divmod(degree - 1, intervals.length);
   return root + intervals[step] + 12 * octave;
 }
+
+// --- Naming pitches ---------------------------------------------------------------
+//
+// A layer's pitches are shifts of its sample, and a sample's own pitch is not
+// something the engine knows -- which is why `root` is a number of semitones
+// rather than a key name. The built-in sounds were made at known pitches,
+// though (see make_samples.py), so for those alone a display can name the
+// notes a sequence actually plays. None of this affects the sound.
+//
+// The pitch each built-in sample sounds at, as a MIDI note number (60 is
+// middle C, C4). The tom's pitch settles at 110 Hz, A2; the drums without a
+// clear pitch are left out.
+export const SAMPLE_PITCH = Object.freeze({
+  "pluck.wav": 57,    // 220 Hz, A3
+  "keys.wav": 57,
+  "marimba.wav": 57,
+  "bell.wav": 64,     // 330 Hz, E4
+  "tom.wav": 45,      // 110 Hz, A2
+});
+
+const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+// The pitch classes a piano plays on its black keys.
+const BLACK = new Set([1, 3, 6, 8, 10]);
+
+// divmod rather than %, so notes below C-1 still name correctly.
+const pitchClass = (midi) => divmod(midi, 12)[1];
+
+// "A3", "C♯5". Octave numbers change at C, with middle C as C4.
+export function noteName(midi) {
+  return `${NOTE_NAMES[pitchClass(midi)]}${divmod(midi, 12)[0] - 1}`;
+}
+
+export const isBlackKey = (midi) => BLACK.has(pitchClass(midi));

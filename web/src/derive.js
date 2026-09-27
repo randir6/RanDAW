@@ -20,7 +20,7 @@
 // The key names are snake_case because this is a data format, and it stayed
 // the same shape when the engine moved from Python to JavaScript.
 
-import { lcm, roundTo } from "./numbers.js";
+import { gcd, lcm, roundTo } from "./numbers.js";
 import { grid, STATUS_NOTE } from "./schedule.js";
 import { EXPORT_FORMAT, EXPORT_VERSION } from "./spec.js";
 
@@ -48,6 +48,23 @@ function label(layer, position, percussive) {
   if (value === null) return "-";
   if (percussive) return "x";
   return String(value);
+}
+
+// How many bars until a layer's pattern comes back round.
+//
+// Each span of `over` bars moves the sequence on by `step` positions: one
+// per beat, or -- for a layer following its hits -- one per beat that sounds.
+// The sequence is back at its start after length / gcd(length, step) spans.
+// A sequence as long as the beat count repeats every span; 7 positions on 5
+// beats over 1 bar takes 7 bars. (Following beats, switched-off beats are the
+// same every span, so they never lengthen this. Following hits, 7 positions
+// on 5 beats with one switched off moves on 4 a span, and still takes 7.)
+function repeatBars(layer) {
+  const length = layer.notes.length;
+  const step = layer.follow === "hits" && layer.activeBeats !== null ? layer.activeBeats.size : layer.beats;
+  // No beat sounds at all: nothing moves, so nothing needs to come round.
+  if (step === 0) return layer.over;
+  return (length / gcd(length, step)) * layer.over;
 }
 
 export function pieceToDerived(piece) {
@@ -84,14 +101,9 @@ export function pieceToDerived(piece) {
       // Whether it sounds, once every layer's mute and solo are taken into
       // account. A silent layer is still drawn, faded.
       audible: piece.audible[index],
-      // How many bars until this layer's pattern comes back round. The
-      // sequence restarts every (length) beats and the layer's span every
-      // (beats) beats; both line up again after lcm(length, beats) beats,
-      // which is that many spans of `over` bars each. A sequence as long as
-      // the beat count repeats every span; 7 positions on 5 beats over 1 bar
-      // takes 7 bars. (Switched-off beats are the same every span, so they
-      // never lengthen this.)
-      repeat_bars: (lcm(layer.notes.length, layer.beats) / layer.beats) * layer.over,
+      // Which beats move the sequence on: "beats" or "hits".
+      follow: layer.follow,
+      repeat_bars: repeatBars(layer),
     };
   });
 

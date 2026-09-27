@@ -34,7 +34,7 @@ const asRecorded = ({ tempo, base, click, repeat_bars, bars, bar_duration, pulse
   cycle_duration: bar_duration,
   warnings: derived.warnings.map((w) =>
     w.replace(OLD_WARNING, "cycle rounded to $1s from $2s -- an LCM of $3 does not divide the sample rate evenly")),
-  layers: derived.layers.map(({ over, mute, solo, audible, repeat_bars, ...rest }) => rest),
+  layers: derived.layers.map(({ over, mute, solo, audible, repeat_bars, follow, ...rest }) => rest),
   cells: derived.cells.map(({ bar, position, ...rest }) => ({ ...rest, cycle: bar, step: position })),
   coincidences: derived.coincidences.map(({ bar, ...rest }) => ({ ...rest, cycle: bar })),
 });

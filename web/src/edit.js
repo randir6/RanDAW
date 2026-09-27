@@ -104,6 +104,11 @@ export function scaleGains(spec, factor) {
   return next;
 }
 
+// Which beats move a layer's sequence on: "beats" (every beat, the default,
+// written by leaving `follow` out) or "hits" (only the beats that sound).
+export const setFollow = (spec, index, follow) =>
+  setLayer(spec, index, "follow", follow === "hits" ? "hits" : null);
+
 export const toggleMute = (spec, index) =>
   setLayer(spec, index, "mute", spec.layer[index].mute ? null : true);
 export const toggleSolo = (spec, index) =>
@@ -238,6 +243,11 @@ export function switchPitchKind(spec, index, kind) {
     const root = effectiveRoot(next, layer);
     layer.degrees = layer.notes.map((n) => (n === REST ? REST : nearestDegree(n, scale, root)));
     delete layer.notes;
+    // A layer becoming a melody has its notes follow its hits, unless it
+    // already says otherwise: switching a beat off should change the tune's
+    // rhythm, not cut a note out of it. With every beat on, the two are the
+    // same, so nothing is heard to change here.
+    if (!Object.hasOwn(layer, "follow")) layer.follow = "hits";
   }
   return next;
 }

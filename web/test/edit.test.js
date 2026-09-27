@@ -10,7 +10,7 @@ import { test } from "node:test";
 
 import {
   addLayer, duplicateLayer, formatSequence, insertPosition, MAX_OVER, parseSequence, removeLayer, removePosition,
-  scaleGains, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  scaleGains, setBeats, setLayer, setLayerRoot, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
 import { schedule } from "../src/schedule.js";
@@ -117,6 +117,18 @@ test("after switching to degrees, changing the piece's scale changes the pitches
   const asDegrees = switchPitchKind(tresillo, 3, "degrees");
   const pitches = (s) => builds(s).layers[3].notes;
   assert.notDeepEqual(pitches(setSetting(asDegrees, "scale", "minor")), pitches(asDegrees));
+});
+
+test("a layer's root set back to the piece's follows the piece again", () => {
+  const spec = { bars: 1, scale: "major", root: 2, layer: [{ beats: 1, degrees: [1], sample: "pluck.wav" }] };
+  const moved = setLayerRoot(spec, 0, 3);
+  assert.equal(moved.layer[0].root, 3);
+  assert.equal(setLayerRoot(moved, 0, 2).layer[0].root, undefined);
+  // Once following, changing the piece's root moves the layer too.
+  const following = setSetting(setLayerRoot(moved, 0, 2), "root", 5);
+  assert.deepEqual(builds(following).layers[0].notes, [5]);
+  // With no piece root, 0 is the piece's.
+  assert.equal(setLayerRoot({ layer: [{ root: 1 }] }, 0, 0).layer[0].root, undefined);
 });
 
 test("every example still builds after each kind of edit", () => {

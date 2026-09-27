@@ -68,6 +68,14 @@ export function setLayer(spec, index, key, value) {
   return next;
 }
 
+// Set one layer's root. Stepping it back to the piece's root removes it, so
+// the layer follows the piece again: a layer's own root overrides the
+// piece's, and one left behind at the same number would quietly stop the
+// piece's Root from reaching this layer.
+export function setLayerRoot(spec, index, root) {
+  return setLayer(spec, index, "root", root === (spec.root ?? 0) ? null : root);
+}
+
 // A new layer: a single hit, on a sample not used yet if there is one, fairly
 // quiet so adding it does not suddenly overload the mix. The click's sample
 // can be chosen for a layer from the menu, but is never picked for you.

@@ -12,7 +12,7 @@
 import {
   addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE, MAX_BEATS,
   MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
-  setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  setLayerRoot, setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
 import { SCALES } from "./scales.js";
@@ -219,7 +219,8 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         [["", pieceScale ? `piece (${pretty(pieceScale)})` : "(choose one)"], ...SCALE_NAMES.map((n) => [n, pretty(n)])],
         (v) => edit((s) => setLayer(s, i, "scale", v || null))),
       isDegrees && stepper("Root", layer.root ?? spec.root ?? 0,
-        (n) => edit((s) => setLayer(s, i, "root", n)), { min: -24, max: 24 }),
+        (n) => edit((s) => setLayerRoot(s, i, n)),
+        { min: -24, max: 24, unit: layer.root === undefined ? "(piece)" : null }),
       h("label", { class: "field" },
         h("span", { class: "label" }, "Gain"),
         h("input", {

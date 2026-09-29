@@ -22,8 +22,13 @@ running through the bars, with a playhead running through all of them —
 notes, rests and switched-off beats, and where they fall against each other.
 
 From the page you can **Download WAV**, **Save piece** (a small `.json` file
-that **Open…** reads back), or **Save page**: a copy of the whole page with
-your piece inside, which is the one file you can email to someone. The page
+that **Open…** reads back), **Share link**, or **Save page**: a copy of the
+whole page with your piece inside, which is the one file you can email to
+someone. The link is shorter still, and
+readable: the page's address always carries the piece being edited, as its
+name, three words and a short tail (tresillo is
+`#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`), so sending or bookmarking the address
+shares or keeps the piece, with nothing stored anywhere. The page
 needs no internet connection and nothing installed; it works on an iPad as
 well as a laptop.
 
@@ -103,9 +108,24 @@ so the groove never stops.
 - A change that breaks a rule (a sequence of nothing but rests, say) is
   refused with a message saying why, and the last good version keeps
   playing.
-- The piece is kept in the browser between visits, so a reload does not lose
-  it. That is a convenience, not a save: **Save piece** or **Save page** to
-  keep something.
+- The piece is kept in the browser as you go. A reload of the tab carries on
+  exactly where it was, undo history and all; a new tab or a new visit opens
+  the piece edited last; the menu lists the last dozen edited, under **Kept in
+  this browser**. Looking at an example or opening a link starts a new piece
+  rather than replacing the last one, and two tabs editing the same piece
+  keep both versions. That is a convenience, not a save -- the browser can
+  clear it (Safari does after some weeks unused, unless the page is on the
+  Home Screen): **Save piece**, **Save page** or a link to keep something.
+- **Share link**, and the address bar itself, hold the piece exactly as it
+  is: `#name.three-words.tail`, about 45-70 characters. The name reads as it
+  is (edit it in the address to rename the piece). The words hold the
+  piece's skeleton -- tempo, base, its layers' samples and beats -- so two
+  versions of a groove that differ only in melody, gains or which beats
+  sound share their words. The tail holds the rest. Links build in what
+  pieces usually are (tempo 120, a kick on note 0, hits spread evenly round
+  the beats, a melody that runs up and down a chord) and spell out only what
+  differs. A link cut short or mistyped is refused, not opened as some other
+  piece. How it works: `web/src/link.js` and `web/src/pack.js`.
 
 ## Glossary
 
@@ -244,7 +264,10 @@ web/
     drawing.js       what all the drawings share
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
-    draft.js         keeping the piece in the browser between visits
+    link.js          a piece in a link's #part, and back
+    pack.js          the short packed form links use
+    words.js         the 6,510 words links are spelled with (from EFF's long list)
+    draft.js         keeping pieces in the browser: this tab, and between visits
     files.js         saving a file from the page; base64 back to bytes
     fingerprint.js   a short hash of the audio, to compare devices
     edit.js          every change the editor can make: spec in, new spec out

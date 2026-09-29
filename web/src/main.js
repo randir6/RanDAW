@@ -7,11 +7,12 @@
 // and connects the rest to it.
 
 import { pieceToDerived } from "./derive.js";
-import { loadDraft, saveDraft } from "./draft.js";
+import { askToKeep, keepPiece, keptPieces, loadTab, newId, saveTab } from "./draft.js";
 import { scaleGains, toggleBeat } from "./edit.js";
 import { renderEditor } from "./editor.js";
 import { download, fromBase64 } from "./files.js";
 import { fnv1a } from "./fingerprint.js";
+import { isLink, linkToPiece, pieceToLink } from "./link.js";
 import { buildPiece } from "./piece.js";
 import { createPlayer } from "./player.js";
 import { finishMix, renderAudio } from "./render.js";
@@ -35,11 +36,17 @@ globalThis.structuredClone ??= (value) => JSON.parse(JSON.stringify(value));
 // been changed yet.
 const PRISTINE = "<!doctype html>\n" + document.documentElement.outerHTML;
 
+// The page's address, less any #part: a reload of the tab at this same
+// address carries on with the piece it had (see draft.js).
+const address = () => location.href.split("#")[0];
+
 // How long a piece may be. A policy of this page, not a rule of the engine:
 // past a couple of minutes the file gets unwieldy to open and share.
 const MAX_SECONDS = 120;
 // How many changes back Undo can go.
 const HISTORY = 200;
+// How many of those a reload of the tab keeps (see remember).
+const HISTORY_KEPT = 50;
 
 // Any error ends up as an attribute on the page, where the automated checks
 // can see it, and as a message a person can read. Otherwise a broken page
@@ -94,6 +101,12 @@ const examples = readBlock("randaw-examples");  // [{ name, about, spec }]
 const state = {
   name: null,
   spec: null,
+  // Where this browser keeps the piece (draft.js): its id, whether it is kept
+  // there yet, and when this tab last read or wrote it there.
+  id: null,
+  kept: false,
+  seen: undefined,
+  link: "",  // the #part last put in the address (link.js)
   history: [],
   future: [],
   selected: null,
@@ -188,15 +201,23 @@ function notices(made) {
 // Open a piece afresh: an example, a file, or the one saved in this page.
 // Undo history starts again, and playback goes back to the start.
 //
+// It is a new piece as far as keeping goes, unless `from` says where it is
+// kept already ({ id, kept, seen }) -- and, coming back to a tab, the undo
+// history it had ({ history, future }).
+//
 // A piece in the older words (cycle_duration, loops) is upgraded to tempo,
 // base and bars first, so the editor only ever meets today's words.
-function open(spec, name) {
+function open(spec, name, from = {}) {
   const made = check(upgradeSpec(spec), name);
   if (made === null) return false;
   cancelSound();
   sound(made);
-  Object.assign(state, { name, spec: made.piece.spec, history: [], future: [], selected: null, made });
+  Object.assign(state, {
+    name, spec: made.piece.spec, history: from.history ?? [], future: from.future ?? [], selected: null, made,
+    id: from.id ?? newId(), kept: from.kept ?? false, seen: from.seen,
+  });
   player.load(made.mix, made.piece.sampleRate, timing());
+  remember({ keep: false });
   show();
   notices(made);
   return true;
@@ -224,10 +245,56 @@ function commit(next, { record = true } = {}) {
   if (s && !(state.spec.layer[s.layer] && s.position < sequenceOf(state.spec.layer[s.layer]).length)) {
     state.selected = null;
   }
-  saveDraft(state.name, state.spec);
+  remember();
   show();
   soundSoon();
   return true;
+}
+
+// Keep the piece where a reload or a later visit can find it (draft.js):
+// always for this tab, and in this browser too once it has been made one's
+// own -- edited, renamed or opened from a file. An example only looked at is
+// not kept, so looking through the examples never pushes a piece out.
+function remember({ keep = true } = {}) {
+  if (keep) {
+    const was = state.id;
+    const got = keepPiece(state.id, state.name, state.spec, state.kept ? state.seen : undefined);
+    if (got) {
+      if (!state.kept) askToKeep();
+      Object.assign(state, { id: got.id, kept: true, seen: got.saved });
+      // Another tab changed this piece too, so this one is now kept apart.
+      if (got.id !== was) showKept();
+    }
+  }
+  saveThisTab();
+  linkSoon();
+}
+function saveThisTab() {
+  const { id, name, spec, kept, seen, future, link } = state;
+  saveTab(address(), { id, name, spec, kept, seen, future, link, history: state.history.slice(-HISTORY_KEPT) });
+}
+
+// Write the piece into the address (link.js), so the address bar is always
+// a link to the piece as it is now: to share, bookmark, or reload with
+// nothing stored. Squeezing it takes a moment, so it is done just after;
+// quick edits in a row only write the last. data-linking on the page says a
+// link is being written, for the automated checks.
+let linking = Promise.resolve();
+let linkCount = 0;
+function linkSoon() {
+  const n = ++linkCount;
+  document.documentElement.dataset.linking = "1";
+  linking = pieceToLink(state.name, state.spec).then((link) => {
+    if (n !== linkCount) return;
+    const url = new URL(location.href);
+    url.searchParams.delete("example");  // the link says which piece it is now
+    url.hash = link;
+    history.replaceState(history.state, "", url);
+    state.link = location.hash;
+    saveThisTab();
+    delete document.documentElement.dataset.linking;
+  });
+  return linking;
 }
 
 // Making the sound is left until just after the screen has been redrawn, by
@@ -361,10 +428,11 @@ function showFingerprint() {
 
 // Give the piece a new name: the title, and the name of anything saved.
 // Characters that file systems refuse are left out; an empty name is ignored.
+const cleanName = (text) => text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
 function rename(text) {
-  const name = text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
+  const name = cleanName(text);
   if (name) state.name = name;
-  saveDraft(state.name, state.spec);
+  remember();
   show();
 }
 
@@ -497,14 +565,37 @@ function showOther(label) {
   $("examples").value = "";
 }
 
+// Below it, the other pieces kept in this browser (draft.js), newest first,
+// for going back to one.
+const keptGroup = document.createElement("optgroup");
+keptGroup.label = "Kept in this browser";
+const when = (saved) => saved
+  ? new Date(saved).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  : "earlier";
+function showKept() {
+  const pieces = keptPieces().filter((p) => p.id !== state.id);
+  keptGroup.replaceChildren(...pieces.map((p) => new Option(`${p.name} — ${when(p.saved)}`, `kept:${p.id}`)));
+  keptGroup.remove();
+  if (pieces.length) $("examples").insertBefore(keptGroup, $("examples").options[other.parentElement ? 1 : 0]);
+  if (!other.parentElement && !examples.some((x) => x.name === $("examples").value)) $("examples").value = "";
+}
+// Another tab kept something: keep the list up to date.
+window.addEventListener("storage", () => showKept());
+
 for (const example of examples) {
   $("examples").add(new Option(`Example: ${example.name} — ${example.about}`, example.name));
 }
 $("examples").addEventListener("change", () => {
-  const example = examples.find((x) => x.name === $("examples").value);
+  const value = $("examples").value;
+  const piece = keptPieces().find((p) => `kept:${p.id}` === value);
+  if (piece && open(piece.spec, piece.name, { id: piece.id, kept: true, seen: piece.saved })) {
+    showOther(`Last edited: ${piece.name}`);
+    showKept();
+  }
+  const example = examples.find((x) => x.name === value);
   if (example && open(example.spec, example.name)) {
     other.remove();
-    saveDraft(state.name, state.spec);
+    showKept();
   }
 });
 
@@ -515,7 +606,11 @@ $("open").addEventListener("change", async () => {
   try {
     if (open(readSpec(await file.text(), file.name), name)) {
       showOther(`Opened: ${name}`);
-      saveDraft(state.name, state.spec);
+      // The same file opened again carries on as the same kept piece.
+      const same = keptPieces().find((p) => p.name === name && JSON.stringify(p.spec) === JSON.stringify(state.spec));
+      if (same) Object.assign(state, { id: same.id, kept: true, seen: same.saved });
+      remember();
+      showKept();
     }
   } catch (e) {
     if (!(e instanceof SpecError)) throw e;
@@ -531,41 +626,122 @@ $("download").addEventListener("click", () => {
 $("save-piece").addEventListener("click", () => {
   download(formatSpec(state.spec), `${state.name}.json`, "application/json");
 });
+$("share-link").addEventListener("click", async () => {
+  await linking;
+  if (location.protocol === "file:") {
+    say("A link to a piece only works from the page's web address, not a copy on this device. " +
+      "To share from here, use Save page.");
+    return;
+  }
+  const url = location.href;
+  // On a phone or tablet, the system's share sheet; elsewhere, the clipboard.
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try {
+      await navigator.share({ title: `${state.name} · RanDAW`, url });
+    } catch {
+      // closed without sharing
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    say("Link copied. It holds the whole piece, so it opens anywhere without anything being stored.");
+  } catch {
+    say("Copy the address from the address bar: it holds the whole piece.");
+  }
+});
+
+// A link pasted into this tab's address bar changes only the #part, which
+// does not reload the page, so open its piece here.
+window.addEventListener("hashchange", async () => {
+  if (!isLink(location.hash) || location.hash === state.link) return;
+  try {
+    const piece = await linkToPiece(location.hash);
+    const name = cleanName(piece.name) || "untitled";
+    if (open(piece.spec, name)) {
+      showOther(`Link: ${name}`);
+      showKept();
+    }
+  } catch (e) {
+    if (!(e instanceof SpecError)) throw e;
+    say(e.message, "error");
+  }
+});
+
 $("save-page").addEventListener("click", () => {
   download(pageWithPiece(PRISTINE, state.name, state.spec), `${state.name}.html`, "text/html");
 });
 
 // --- Start -------------------------------------------------------------------------
 
-// Which piece to open first: ?example=name in the address, else the piece
-// saved into this page, else whatever was being edited last time, else the
-// first example.
-const params = new URLSearchParams(location.search);
-const embedded = readBlock("randaw-piece");  // null, or { name, spec }
-const asked = examples.find((x) => x.name === params.get("example"));
-const draft = asked || embedded ? null : loadDraft();
-if (asked) {
-  $("examples").value = asked.name;
-  open(asked.spec, asked.name);
-} else if (embedded) {
-  showOther(`Piece: ${embedded.name}`);
-  open(embedded.spec, embedded.name);
-} else if (draft && open(draft.spec, draft.name)) {
-  showOther(`Last edited: ${draft.name}`);
-} else {
-  $("examples").value = examples[0].name;
-  open(examples[0].spec, examples[0].name);
-}
-
-// ?t=3.2 shows a still frame at 3.2 seconds, without sound -- for linking to
-// a moment, and for the automated checks, which have no speakers.
-if (params.has("t") && state.made) {
-  const t = parseFloat(params.get("t"));
-  if (!Number.isNaN(t)) {
-    player.seek(t / state.made.piece.barDuration);
-    $("play").disabled = true;
-    $("hint").textContent = `Still frame at ${t.toFixed(2)} s — remove ?t= from the address to play`;
-    refresh();
+// Which piece to open first: the one this tab had, if this is a reload;
+// else a piece written into the link (#p...); else ?example=name in
+// the address; else the piece saved into this page; else the one edited
+// last in this browser; else the first example.
+//
+// A reload keeps the tab's own piece, with its undo history, as long as the
+// link is still the one this tab wrote; a different link wins.
+async function start() {
+  const params = new URLSearchParams(location.search);
+  const tab = loadTab(address());
+  const resume = tab && (!isLink(location.hash) || location.hash === tab.link);
+  let linked = null;
+  let problem = null;
+  if (!resume && isLink(location.hash)) {
+    try {
+      linked = await linkToPiece(location.hash);
+      linked.name = cleanName(linked.name) || "untitled";
+    } catch (e) {
+      if (!(e instanceof SpecError)) throw e;
+      problem = e.message;
+    }
   }
+  const embedded = readBlock("randaw-piece");  // null, or { name, spec }
+  const asked = examples.find((x) => x.name === params.get("example"));
+  const latest = linked || asked || embedded ? null : keptPieces()[0];
+
+  let opened = false;
+  if (resume && (opened = open(tab.spec, tab.name, tab))) {
+    if (!tab.kept && examples.some((x) => x.name === tab.name)) $("examples").value = tab.name;
+    else showOther(`${tab.kept ? "Last edited" : "Piece"}: ${tab.name}`);
+  }
+  if (!opened && linked) {
+    if ((opened = open(linked.spec, linked.name))) showOther(`Link: ${linked.name}`);
+    else problem = `The piece in that link could not be opened: ${$("message").textContent}`;
+  }
+  if (!opened && asked) {
+    $("examples").value = asked.name;
+    opened = open(asked.spec, asked.name);
+  }
+  if (!opened && embedded) {
+    showOther(`Piece: ${embedded.name}`);
+    open(embedded.spec, embedded.name);  // if it cannot be used, its message stays
+    opened = true;
+  }
+  if (!opened && latest && (opened = open(latest.spec, latest.name, { id: latest.id, kept: true, seen: latest.saved }))) {
+    showOther(`Last edited: ${latest.name}`);
+  }
+  if (!opened) {
+    $("examples").value = examples[0].name;
+    open(examples[0].spec, examples[0].name);
+  }
+  showKept();
+  if (problem) say(problem, "error");
+
+  // ?t=3.2 shows a still frame at 3.2 seconds, without sound -- for linking to
+  // a moment, and for the automated checks, which have no speakers.
+  if (params.has("t") && state.made) {
+    const t = parseFloat(params.get("t"));
+    if (!Number.isNaN(t)) {
+      player.seek(t / state.made.piece.barDuration);
+      $("play").disabled = true;
+      $("hint").textContent = `Still frame at ${t.toFixed(2)} s — remove ?t= from the address to play`;
+      refresh();
+    }
+  }
+  document.documentElement.dataset.ready = "1";
 }
-document.documentElement.dataset.ready = "1";
+start().catch((e) => {
+  document.documentElement.dataset.error = String(e.message);
+  say(`Something went wrong: ${e.message}`, "error");
+});

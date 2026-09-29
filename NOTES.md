@@ -222,6 +222,22 @@ Design notes from thinking it through, so the work does not start cold:
 
 ## Decisions worth remembering
 
+- **Keeping work in the browser is two layers, and never a save.** Since the
+  page is hosted, reloads and new visits are the normal way back to it, so
+  one draft slot was not enough: any example picked, or any ?example= link
+  followed, replaced it, and a reload of a link reopened the example. Now
+  (`draft.js`) each tab keeps its own piece and undo history for a reload
+  at the same address (sessionStorage), and the browser keeps the last 12
+  pieces edited, each under its own id (localStorage). A piece is kept only
+  once edited, renamed or opened from a file, so browsing examples never
+  pushes one out. If another tab wrote the same piece since this tab last
+  did, this tab's version becomes a new piece rather than replacing it. The
+  page asks the browser to keep its storage (`navigator.storage.persist`),
+  which is only a request: Safari still clears a site's storage after some
+  weeks unused unless it is on the Home Screen. Not done: keeping pieces
+  anywhere but this browser (an account, a server) -- moving between
+  devices is still Save piece, or Save page.
+
 - **A rest is `"-"`, in both notations.** It cannot be a number, because 0 is
   already meaningful in each: unison in semitones, one step below the root as
   a degree. `"-5"` is still minus five; only an exact `"-"` is a rest.

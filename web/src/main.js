@@ -7,7 +7,7 @@
 // and connects the rest to it.
 
 import { pieceToDerived } from "./derive.js";
-import { loadDraft, saveDraft } from "./draft.js";
+import { askToKeep, keepPiece, keptPieces, loadTab, newId, saveTab } from "./draft.js";
 import { scaleGains, toggleBeat } from "./edit.js";
 import { renderEditor } from "./editor.js";
 import { download, fromBase64 } from "./files.js";
@@ -35,11 +35,17 @@ globalThis.structuredClone ??= (value) => JSON.parse(JSON.stringify(value));
 // been changed yet.
 const PRISTINE = "<!doctype html>\n" + document.documentElement.outerHTML;
 
+// The page's address, less any #part: a reload of the tab at this same
+// address carries on with the piece it had (see draft.js).
+const ADDRESS = location.href.split("#")[0];
+
 // How long a piece may be. A policy of this page, not a rule of the engine:
 // past a couple of minutes the file gets unwieldy to open and share.
 const MAX_SECONDS = 120;
 // How many changes back Undo can go.
 const HISTORY = 200;
+// How many of those a reload of the tab keeps (see remember).
+const HISTORY_KEPT = 50;
 
 // Any error ends up as an attribute on the page, where the automated checks
 // can see it, and as a message a person can read. Otherwise a broken page
@@ -94,6 +100,11 @@ const examples = readBlock("randaw-examples");  // [{ name, about, spec }]
 const state = {
   name: null,
   spec: null,
+  // Where this browser keeps the piece (draft.js): its id, whether it is kept
+  // there yet, and when this tab last read or wrote it there.
+  id: null,
+  kept: false,
+  seen: undefined,
   history: [],
   future: [],
   selected: null,
@@ -188,15 +199,23 @@ function notices(made) {
 // Open a piece afresh: an example, a file, or the one saved in this page.
 // Undo history starts again, and playback goes back to the start.
 //
+// It is a new piece as far as keeping goes, unless `from` says where it is
+// kept already ({ id, kept, seen }) -- and, coming back to a tab, the undo
+// history it had ({ history, future }).
+//
 // A piece in the older words (cycle_duration, loops) is upgraded to tempo,
 // base and bars first, so the editor only ever meets today's words.
-function open(spec, name) {
+function open(spec, name, from = {}) {
   const made = check(upgradeSpec(spec), name);
   if (made === null) return false;
   cancelSound();
   sound(made);
-  Object.assign(state, { name, spec: made.piece.spec, history: [], future: [], selected: null, made });
+  Object.assign(state, {
+    name, spec: made.piece.spec, history: from.history ?? [], future: from.future ?? [], selected: null, made,
+    id: from.id ?? newId(), kept: from.kept ?? false, seen: from.seen,
+  });
   player.load(made.mix, made.piece.sampleRate, timing());
+  remember({ keep: false });
   show();
   notices(made);
   return true;
@@ -224,10 +243,29 @@ function commit(next, { record = true } = {}) {
   if (s && !(state.spec.layer[s.layer] && s.position < sequenceOf(state.spec.layer[s.layer]).length)) {
     state.selected = null;
   }
-  saveDraft(state.name, state.spec);
+  remember();
   show();
   soundSoon();
   return true;
+}
+
+// Keep the piece where a reload or a later visit can find it (draft.js):
+// always for this tab, and in this browser too once it has been made one's
+// own -- edited, renamed or opened from a file. An example only looked at is
+// not kept, so looking through the examples never pushes a piece out.
+function remember({ keep = true } = {}) {
+  if (keep) {
+    const was = state.id;
+    const got = keepPiece(state.id, state.name, state.spec, state.kept ? state.seen : undefined);
+    if (got) {
+      if (!state.kept) askToKeep();
+      Object.assign(state, { id: got.id, kept: true, seen: got.saved });
+      // Another tab changed this piece too, so this one is now kept apart.
+      if (got.id !== was) showKept();
+    }
+  }
+  const { id, name, spec, kept, seen, future } = state;
+  saveTab(ADDRESS, { id, name, spec, kept, seen, future, history: state.history.slice(-HISTORY_KEPT) });
 }
 
 // Making the sound is left until just after the screen has been redrawn, by
@@ -364,7 +402,7 @@ function showFingerprint() {
 function rename(text) {
   const name = text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
   if (name) state.name = name;
-  saveDraft(state.name, state.spec);
+  remember();
   show();
 }
 
@@ -497,14 +535,37 @@ function showOther(label) {
   $("examples").value = "";
 }
 
+// Below it, the other pieces kept in this browser (draft.js), newest first,
+// for going back to one.
+const keptGroup = document.createElement("optgroup");
+keptGroup.label = "Kept in this browser";
+const when = (saved) => saved
+  ? new Date(saved).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  : "earlier";
+function showKept() {
+  const pieces = keptPieces().filter((p) => p.id !== state.id);
+  keptGroup.replaceChildren(...pieces.map((p) => new Option(`${p.name} — ${when(p.saved)}`, `kept:${p.id}`)));
+  keptGroup.remove();
+  if (pieces.length) $("examples").insertBefore(keptGroup, $("examples").options[other.parentElement ? 1 : 0]);
+  if (!other.parentElement && !examples.some((x) => x.name === $("examples").value)) $("examples").value = "";
+}
+// Another tab kept something: keep the list up to date.
+window.addEventListener("storage", () => showKept());
+
 for (const example of examples) {
   $("examples").add(new Option(`Example: ${example.name} — ${example.about}`, example.name));
 }
 $("examples").addEventListener("change", () => {
-  const example = examples.find((x) => x.name === $("examples").value);
+  const value = $("examples").value;
+  const piece = keptPieces().find((p) => `kept:${p.id}` === value);
+  if (piece && open(piece.spec, piece.name, { id: piece.id, kept: true, seen: piece.saved })) {
+    showOther(`Last edited: ${piece.name}`);
+    showKept();
+  }
+  const example = examples.find((x) => x.name === value);
   if (example && open(example.spec, example.name)) {
     other.remove();
-    saveDraft(state.name, state.spec);
+    showKept();
   }
 });
 
@@ -515,7 +576,11 @@ $("open").addEventListener("change", async () => {
   try {
     if (open(readSpec(await file.text(), file.name), name)) {
       showOther(`Opened: ${name}`);
-      saveDraft(state.name, state.spec);
+      // The same file opened again carries on as the same kept piece.
+      const same = keptPieces().find((p) => p.name === name && JSON.stringify(p.spec) === JSON.stringify(state.spec));
+      if (same) Object.assign(state, { id: same.id, kept: true, seen: same.saved });
+      remember();
+      showKept();
     }
   } catch (e) {
     if (!(e instanceof SpecError)) throw e;
@@ -537,25 +602,30 @@ $("save-page").addEventListener("click", () => {
 
 // --- Start -------------------------------------------------------------------------
 
-// Which piece to open first: ?example=name in the address, else the piece
-// saved into this page, else whatever was being edited last time, else the
-// first example.
+// Which piece to open first: the one this tab had, if this is a reload;
+// else ?example=name in the address; else the piece saved into this page;
+// else the one edited last in this browser; else the first example.
 const params = new URLSearchParams(location.search);
+const tab = loadTab(ADDRESS);
 const embedded = readBlock("randaw-piece");  // null, or { name, spec }
 const asked = examples.find((x) => x.name === params.get("example"));
-const draft = asked || embedded ? null : loadDraft();
-if (asked) {
+const latest = asked || embedded ? null : keptPieces()[0];
+if (tab && open(tab.spec, tab.name, tab)) {
+  if (!tab.kept && examples.some((x) => x.name === tab.name)) $("examples").value = tab.name;
+  else showOther(`${tab.kept ? "Last edited" : "Piece"}: ${tab.name}`);
+} else if (asked) {
   $("examples").value = asked.name;
   open(asked.spec, asked.name);
 } else if (embedded) {
   showOther(`Piece: ${embedded.name}`);
   open(embedded.spec, embedded.name);
-} else if (draft && open(draft.spec, draft.name)) {
-  showOther(`Last edited: ${draft.name}`);
+} else if (latest && open(latest.spec, latest.name, { id: latest.id, kept: true, seen: latest.saved })) {
+  showOther(`Last edited: ${latest.name}`);
 } else {
   $("examples").value = examples[0].name;
   open(examples[0].spec, examples[0].name);
 }
+showKept();
 
 // ?t=3.2 shows a still frame at 3.2 seconds, without sound -- for linking to
 // a moment, and for the automated checks, which have no speakers.

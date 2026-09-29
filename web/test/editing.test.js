@@ -268,6 +268,67 @@ test("editing: the piece survives a reload", { skip }, () =>
     }
   }));
 
+// Reload the tab itself, as the browser's reload button does, and wait for
+// the new page (the old one is marked so it cannot be mistaken for it).
+async function reload(page) {
+  await page.evaluate("window.oldPage = true, location.reload(), true");
+  await page.waitFor("!window.oldPage && document.documentElement.dataset.ready === '1'");
+}
+
+test("editing: a reload of the tab carries on, undo history and all, even from an ?example= link", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const spec = example("tresillo");
+    const off = toggleBeat(spec, 0, 2);
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    await reload(page);
+    assert.equal(await fingerprint(page), print(off));
+    await click(page, "button[title^='Undo']");
+    assert.equal(await fingerprint(page), print(spec));
+  }));
+
+test("editing: looking at an example does not replace the piece being edited", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const edited = toggleBeat(example("tresillo"), 1, 1);
+    await tap(page, '.band[data-layer="1"][data-beat="1"]');
+    await fingerprint(page);
+    await page.evaluate(`const menu = document.getElementById("examples");
+      menu.value = "rests"; menu.dispatchEvent(new Event("change")), true`);
+    assert.equal(await fingerprint(page), print(example("rests")));
+    // The edited piece is still offered, and a new visit opens it.
+    const offered = await page.evaluate(`[...document.querySelectorAll("#examples optgroup option")]
+      .map((o) => o.text.split(" — ")[0])`);
+    assert.deepEqual(offered, ["tresillo"]);
+    const again = await browser.open(PAGE);
+    try {
+      assert.equal(await fingerprint(again), print(edited));
+    } finally {
+      await again.close();
+    }
+  }));
+
+test("editing: two tabs editing the same piece keep both versions", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    const other = await browser.open(PAGE);  // opens the same kept piece
+    try {
+      await tap(other, '.band[data-layer="1"][data-beat="1"]');
+      await fingerprint(other);
+      await tap(page, '.band[data-layer="0"][data-beat="1"]');
+      await fingerprint(page);
+      const kept = await page.evaluate(`JSON.parse(localStorage.getItem("randaw-pieces")).map((p) => p.spec)`);
+      const base = example("tresillo");
+      assert.equal(kept.length, 2);
+      assert.deepEqual(new Set(kept.map((s) => print(s))), new Set([
+        print(toggleBeat(toggleBeat(base, 0, 2), 0, 1)),
+        print(toggleBeat(toggleBeat(base, 0, 2), 1, 1)),
+      ]));
+    } finally {
+      await other.close();
+    }
+  }));
+
 test("editing: while playing, an edit waits for the next bar and playback carries on", { skip }, () =>
   editing("tresillo", async (page) => {
     // The browser's audio clock runs in real time even with no speakers, so

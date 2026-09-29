@@ -103,9 +103,14 @@ so the groove never stops.
 - A change that breaks a rule (a sequence of nothing but rests, say) is
   refused with a message saying why, and the last good version keeps
   playing.
-- The piece is kept in the browser between visits, so a reload does not lose
-  it. That is a convenience, not a save: **Save piece** or **Save page** to
-  keep something.
+- The piece is kept in the browser as you go. A reload of the tab carries on
+  exactly where it was, undo history and all; a new tab or a new visit opens
+  the piece edited last; the menu lists the last dozen edited, under **Kept in
+  this browser**. Looking at an example or opening a link starts a new piece
+  rather than replacing the last one, and two tabs editing the same piece
+  keep both versions. That is a convenience, not a save -- the browser can
+  clear it (Safari does after some weeks unused, unless the page is on the
+  Home Screen): **Save piece** or **Save page** to keep something.
 
 ## Glossary
 
@@ -244,7 +249,7 @@ web/
     drawing.js       what all the drawings share
     player.js        playing the audio on a seamless loop
     share.js         putting a piece into a copy of the page
-    draft.js         keeping the piece in the browser between visits
+    draft.js         keeping pieces in the browser: this tab, and between visits
     files.js         saving a file from the page; base64 back to bytes
     fingerprint.js   a short hash of the audio, to compare devices
     edit.js          every change the editor can make: spec in, new spec out

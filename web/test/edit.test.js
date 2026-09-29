@@ -10,7 +10,7 @@ import { test } from "node:test";
 
 import {
   addLayer, duplicateLayer, formatSequence, insertPosition, MAX_BARS, MAX_OVER, parseSequence, removeLayer, removePosition,
-  scaleGains, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  scaleGains, setAllBeats, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
 import { schedule } from "../src/schedule.js";
@@ -69,6 +69,14 @@ test("spreading a layer over fewer bars brings too many beats down with it", () 
   assert.equal(two.beats, 64);
   assert.deepEqual(two.active, [1, 50]);
   assert.equal(setOver(spec, 0, 12).layer[0].beats, 300, "more bars leave the beats alone");
+});
+
+test("every beat of a layer can be switched on, or off, at once", () => {
+  const spec = { bars: 1, layer: [{ beats: 12, active: [1, 5], notes: [0], sample: "kick.wav" }] };
+  assert.equal(Object.hasOwn(setAllBeats(spec, 0, true).layer[0], "active"), false, "all on is written by leaving it out");
+  assert.deepEqual(setAllBeats(spec, 0, false).layer[0].active, []);
+  builds(setAllBeats(spec, 0, false));
+  assert.deepEqual(spec.layer[0].active, [1, 5], "the spec passed in is untouched");
 });
 
 test("switching a beat off and on again leaves the layer as it was", () => {

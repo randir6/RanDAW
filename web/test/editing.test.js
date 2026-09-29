@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setAllBeats, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { planSwap } from "../src/player.js";
@@ -361,6 +361,31 @@ test("editing: Escape puts the position keypad away", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 1);
     await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
+  }));
+
+test("editing: with more than ten beats, all of a layer's beats switch on or off at once", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const count = () => page.evaluate("document.querySelector('.card').querySelectorAll('.all-beats').length");
+    let spec = example("tresillo");
+    assert.equal(await count(), 0, "not for 8 beats");
+
+    await page.evaluate(`{
+      const box = document.querySelector(".card input[aria-label='Beats']");
+      box.value = "12";
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    spec = setBeats(spec, 0, 12);
+    assert.equal(await count(), 2);
+
+    await click(page, ".card .all-beats", 1);  // No beats
+    spec = setAllBeats(spec, 0, false);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=true]').length"), 0);
+
+    await click(page, ".card .all-beats", 0);  // All beats
+    spec = setAllBeats(spec, 0, true);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=false]').length"), 0);
   }));
 
 test("editing: keyboard focus stays on the control just used", { skip }, () =>

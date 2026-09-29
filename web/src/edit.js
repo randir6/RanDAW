@@ -160,6 +160,15 @@ export function toggleBeat(spec, index, beat) {
   return next;
 }
 
+// Switch every beat of a layer on, or every one off.
+export function setAllBeats(spec, index, on) {
+  const next = copy(spec);
+  const layer = next.layer[index];
+  if (on) delete layer.active;
+  else layer.active = [];
+  return next;
+}
+
 // --- The sequence ------------------------------------------------------------------
 
 // A sequence is a list of notes and rests, read one POSITION per beat.

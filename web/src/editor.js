@@ -11,8 +11,8 @@
 
 import {
   addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE,
-  maxBeats, MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
-  setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  maxBeats, MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setAllBeats,
+  setBeats, setLayer, setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
 import { SCALES } from "./scales.js";
@@ -293,8 +293,19 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     // beats in the drawing, but big enough to hit on a phone however many
     // beats there are, and usable from a keyboard or a screen reader.
     const on = new Set(info.active ?? Array.from({ length: layer.beats }, (_, b) => b + 1));
+    // With more than a handful of beats, switching them one at a time is a
+    // chore, so there are buttons to switch them all on or all off.
+    const many = layer.beats > 10;
     const beatRow = h("div", { class: "beats-on", role: "group", "aria-label": `Beats of layer ${i + 1} that sound` },
       h("span", { class: "label" }, "On"),
+      many && h("button", {
+        type: "button", class: "all-beats", disabled: on.size === layer.beats,
+        title: "Switch every beat on", onclick: () => edit((s) => setAllBeats(s, i, true)),
+      }, "All beats"),
+      many && h("button", {
+        type: "button", class: "all-beats", disabled: on.size === 0,
+        title: "Switch every beat off", onclick: () => edit((s) => setAllBeats(s, i, false)),
+      }, "No beats"),
       Array.from({ length: layer.beats }, (_, b) => b + 1).map((beat) =>
         h("button", {
           type: "button", class: "beat", "aria-pressed": String(on.has(beat)),

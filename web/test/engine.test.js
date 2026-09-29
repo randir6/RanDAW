@@ -116,6 +116,10 @@ test("a rest travels with the sequence; a switched-off beat stays put", () => {
 test("a switched-off beat silences its note rather than shifting the melody", () => {
   const p = piece({ bars: 1, layer: [{ beats: 4, notes: [0, 12, 24, 36], sample: "pluck.wav", active: [1, 3] }] });
   assert.deepEqual(schedule(p).map((e) => e.semitones), [0, 24]);
+  // Where a switched-off beat meets a rest, the switch wins: it is drawn as
+  // switched off, not as a rest.
+  const cells = pieceToDerived(piece({ bars: 1, layer: [{ beats: 2, notes: [0, "-"], sample: "kick.wav", active: [1] }] })).cells;
+  assert.deepEqual(cells.map((c) => c.status), [STATUS_NOTE, STATUS_INACTIVE]);
 });
 
 // --- Layers over more than one bar ---------------------------------------------------

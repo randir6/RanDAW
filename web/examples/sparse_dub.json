@@ -1,7 +1,7 @@
 {
   "tempo": 80,
   "base": 4,
-  "bars": 5,
+  "bars": 4,
   "layer": [
     {"beats": 8, "notes": [0], "sample": "kick.wav", "gain": 0.8, "active": [1, 6]},
     {"beats": 8, "notes": [-5], "sample": "tom.wav", "gain": 0.45, "active": [4]},

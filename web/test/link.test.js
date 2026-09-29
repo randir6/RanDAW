@@ -8,17 +8,17 @@ import { test } from "node:test";
 
 import { isLink, linkToPiece, pieceToLink } from "../src/link.js";
 import { pack, unpack, Unpackable } from "../src/pack.js";
-import { SpecError, upgradeSpec } from "../src/spec.js";
+import { SpecError } from "../src/spec.js";
 import { readJson, WEB } from "./helpers.js";
 
 const examples = readdirSync(join(WEB, "examples")).map((f) => ({
   name: f.replace(/\.json$/, ""), spec: readJson(WEB, "examples", f),
 }));
-// The random pieces the fuzz checks use; the good ones, in today's words, as
-// the page would hold them.
-const fuzzed = readJson(WEB, "test", "fixtures", "fuzz.json")
+// The random pieces the answer key uses; the good ones, already in today's
+// words, as the page would hold them.
+const fuzzed = readJson(WEB, "test", "fixtures", "answers.json").pieces
   .filter((x) => x.ok)
-  .map((x, i) => ({ name: `fuzz ${i}`, spec: upgradeSpec(x.spec) }));
+  .map((x, i) => ({ name: `fuzz ${i}`, spec: x.spec }));
 
 test("link: every example comes back exactly, as name.three-words.tail", async () => {
   for (const { name, spec } of examples) {
@@ -130,9 +130,11 @@ test("pack: a piece outside what it covers is refused, for link.js to write anot
 // when the words form was first written; if this fails, a frozen list in
 // pack.js or words.js has changed -- make a new kind of link instead.
 test("link: links made with the first words form still open exactly what they did", async () => {
+  // Each link beside the piece it was made from, kept here rather than read
+  // from the examples, which may change.
   const links = readJson(WEB, "test", "fixtures", "links.json");
-  for (const { name, spec } of examples) {
-    assert.deepEqual(await linkToPiece(links[name]), { name, spec }, name);
-    assert.equal(await pieceToLink(name, spec), links[name], `${name} is now written differently`);
+  for (const [name, { link, spec }] of Object.entries(links)) {
+    assert.deepEqual(await linkToPiece(link), { name, spec }, name);
+    assert.equal(await pieceToLink(name, spec), link, `${name} is now written differently`);
   }
 });

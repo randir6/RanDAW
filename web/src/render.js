@@ -40,10 +40,10 @@ function addWrapped(buffer, start, audio) {
 // changes one layer, so most notes' sounds are already made. A sound depends
 // only on its sample, pitch, gain and the sample rate, so a remembered one is
 // always exactly right. Without a cache, each render starts from scratch.
-export function renderAudio(events, { totalPulses, samplesPerPulse, sampleRate, library, cache = new Map() }) {
+export function renderAudio(events, { totalPulses, totalSamples, sampleRate, library, cache = new Map() }) {
   // Start with silence, the full length of the piece; everything adds into
   // it. new Float32Array(n) is n zeros.
-  const mix = new Float32Array(totalPulses * samplesPerPulse);
+  const mix = new Float32Array(totalSamples);
 
   for (const event of events) {
     // These together decide what a note sounds like, so any note sharing all
@@ -51,9 +51,24 @@ export function renderAudio(events, { totalPulses, samplesPerPulse, sampleRate, 
     // because a Map compares list keys by identity, not contents.
     const key = `${event.sample}|${sampleRate}|${event.semitones}|${event.gain}`;
     if (!cache.has(key)) cache.set(key, makeVoice(library.get(event.sample), event, sampleRate, cache));
-    addWrapped(mix, event.pulse * samplesPerPulse, cache.get(key));
+    addWrapped(mix, sampleAt(event.pulse, totalPulses, totalSamples), cache.get(key));
   }
   return mix;
+}
+
+// Which audio sample a pulse starts on: its exact share of the piece, rounded
+// to the nearest sample. A beat two-thirds of the way through a 1000-sample
+// piece starts on sample 667.
+//
+// Divided first and multiplied after, because pulse x totalSamples could be
+// too big for a JavaScript number to hold exactly. The tiny error that
+// leaves is far below half a sample, so it only matters for a beat exactly
+// halfway between two samples -- which then goes the same way on every
+// device, since every browser does this arithmetic identically. When a pulse
+// is a whole number of samples (as in every older piece), that whole number
+// is exactly what comes back.
+export function sampleAt(pulse, totalPulses, totalSamples) {
+  return Math.round((pulse / totalPulses) * totalSamples);
 }
 
 // One note's sound: its sample at the piece's rate, scaled by its gain, then

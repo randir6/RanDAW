@@ -493,14 +493,17 @@ test("editing: jumping while playing carries on playing from the new place", { s
   editing("tresillo", async (page) => {
     await click(page, "#play");
     await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 0.3");
-    await click(page, "#next");  // the next page: bars 5-8, starting at 8 s
+    await click(page, "#next");  // the next page: bars 5-6, starting at 8 s
     await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 8.3");
     assert.equal(await page.evaluate("document.getElementById('play').textContent"), "Pause");
-    assert.equal(await page.evaluate("document.getElementById('window').textContent"), "bars 5–8 of 8");
+    assert.equal(await page.evaluate("document.getElementById('window').textContent"), "bars 5–6 of 6");
   }));
 
 test("editing: the piece says how long its pattern takes, and can loop on it exactly", { skip }, () =>
   editing("rests", async (page) => {
+    // The example is a whole 21 bars; cut it to 6, part-way through its pattern.
+    for (let i = 0; i < 15; i++) await click(page, ".piece-controls button[aria-label='Bars down']");
+    assert.equal(await fingerprint(page), print(setSetting(example("rests"), "bars", 6)));
     assert.match(await page.evaluate("document.querySelector('.piece-controls .repeat').textContent"),
       /whole pattern repeats every 21 bars/);
     await page.evaluate(`[...document.querySelectorAll(".piece-controls button")].find((b) => b.textContent === "Use 21 bars").click(), true`);
@@ -510,7 +513,10 @@ test("editing: the piece says how long its pattern takes, and can loop on it exa
 
 test("editing: the length suggestion rounds up to whole repeats, keeping the length chosen", { skip }, () =>
   editing("tresillo", async (page) => {
-    // tresillo: 8 bars of a pattern that repeats every 3. The next whole number is 9.
+    // tresillo is 6 bars of a pattern that repeats every 3. Made 8, the next
+    // whole number of repeats is 9.
+    for (let i = 0; i < 2; i++) await click(page, ".piece-controls button[aria-label='Bars up']");
+    await page.waitFor("!document.documentElement.dataset.busy");
     const button = "[...document.querySelectorAll('.piece-controls .repeat button')].map((b) => b.textContent)";
     assert.deepEqual(await page.evaluate(button), ["Use 9 bars"]);
   }));

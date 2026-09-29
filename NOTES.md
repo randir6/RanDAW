@@ -24,7 +24,7 @@ Measured: an 8 kHz tone shifted +24 semitones should land at 32 kHz, above the
 22.05 kHz Nyquist limit. It comes back at 12.1 kHz.
 
 In practice: fine for shifts of a few semitones, increasingly gritty on bright
-samples shifted up a long way. Revisit alongside phase 4 (per-layer effects),
+samples shifted up a long way. Revisit alongside per-layer effects (phase 15),
 where a proper resampler or a real pitch-shifter would live.
 
 ### Pitch and duration are coupled
@@ -46,8 +46,10 @@ Now an explicit choice: `wav.js` writes 16-bit PCM itself (it was a library
 default in the Python version). Right for the downstream targets (Koala,
 Loopy). The rounding rule it uses is the Python library's, copied exactly so
 the two versions made identical files; it is slightly odd (round to 32 bits,
-keep the top 16) and could be simplified once the Python version is retired,
-at the cost of changing the last bit of some samples.
+keep the top 16). Now the Python checks are retired it could be simplified
+to plain rounding, changing the last bit of some samples: a deliberate
+change, so re-record the answer key (see README, "Checking nothing is
+broken").
 
 ### The drawing scrolls sideways on a phone held upright
 Since phase 11, narrow screens show two bars per page and the drawing keeps
@@ -60,32 +62,14 @@ Consequence: adding layers or stacking overlapping tails can clip, and the fix
 is to dial gains down yourself. The clipping warning suggests a specific value
 that resolves it.
 
-### The file is not exactly the tempo's length
-Beats land on an integer grid of pulses, and each pulse is a whole number of
-audio samples. So a bar is (pulses per bar) × (samples per pulse), which is
-the tempo's bar length rounded to fit. The `spans` example asks for a 2.4 s
-bar (100 BPM, 4 beats) and gets 2.4019 s, because 364 pulses per bar do not
-divide 2.4 × 44100 evenly: 8 bars come out 15 ms long.
-
-Inaudible within the file, but **it matters for the tool's purpose**: a loop
-dropped into a DAW or looper running at 100 BPM will drift against it by
-that much each time round, unless the host stretches it to fit. Fixable by
-placing each beat at its exact fraction of the bar, rounded to the nearest
-sample, instead of snapping to a pulse grid — then the file is exactly
-bars × bar length, and each beat is within half a sample of true. It would
-change the sound of new pieces by at most a sample per beat; older pieces
-could keep today's timing. **Top candidate for the next piece of work.**
-
-### Very fine grids lose resolution
-A bar of B seconds at sample rate R needs pulses per bar ≤ B × R for at
-least one sample per pulse, and comfortably fewer to place beats accurately.
-
-Measured at a 2s bar, 44.1 kHz: 3/4/5/7/11 (4620 pulses per bar) renders a
-1.990s bar, 0.5% off and inaudible. Adding a 13 (60060) leaves 1.47 samples
-per pulse, which rounds to 1 and collapses the bar to 1.36s — the page warns
-when the rounded bar differs from the requested one by over 1%.
-
-The same fix as above removes this limit too.
+### Older pieces sound a hair different once upgraded
+Beats used to snap to a grid of whole-sample pulses, which made a bar only
+roughly the length asked for -- 8 bars of a 2.4 s bar came out 15 ms long,
+enough to drift a 16th note against a DAW in about three minutes -- and at
+very fine grids (3/4/5/7/11/13 in a 2 s bar) collapsed the bar to 1.36 s.
+Fixed (see Decisions, "Exact loops"), and that grid is gone. A piece saved in
+the older words is upgraded as it opens and played with today's timing, so it
+can differ from how it sounded when saved by up to a sample per beat.
 
 ## Open questions
 
@@ -190,20 +174,15 @@ Design notes from thinking it through, so the work does not start cold:
 - **Auto-normalise option.** Levels are set by hand on purpose, but a
   `--normalise` that scales the finished mix to just under 0 dB would save
   dialling gains in by trial and error.
-- **Sample-accurate event placement.** Beats snap to an integer pulse grid,
-  which makes the file slightly off the tempo's length and loses resolution
-  on very fine grids (both above). Placing each beat at its exact fraction
-  of the bar would fix both.
 - **Stereo.** Everything is mono. Panning is an obvious per-layer parameter
   and would want settling before per-layer effects land.
-- **Explicit output bit depth.** 16-bit PCM is currently soundfile's default
-  rather than a stated choice.
 - **Per-note velocity.** Gain is per-layer. Per-event gain would allow
   accents, and `Event` already carries a gain field that could vary.
-- **More than five layers in the visualiser.** The cap is `MAX_LAYERS` in
-  `visualise.py`, and rows are laid out from the layer count, so lifting it
-  is a one-line change plus a look at whether a sixth row still fits a
-  laptop screen. Needs a sixth palette colour, validated like the others.
+- **More than five layers.** The cap is `MAX_LAYERS` in `view.js`: the
+  engine has no limit, but the editor will not add a sixth layer because the
+  drawings show at most five. Rows are laid out from the layer count, so
+  lifting it is a one-line change plus a look at whether a sixth row still
+  fits a laptop screen, and a sixth palette colour, validated like the others.
 - **Share straight to AUM or Koala from the iPad.** The page downloads the
   WAV; Safari's share sheet (`navigator.share` with a file) could send it to
   another app directly. Needs trying on the device.
@@ -459,9 +438,30 @@ Design notes from thinking it through, so the work does not start cold:
   Python answers still match to the byte. The page upgrades an older piece
   to tempo/base/bars as it opens it; saying the same thing both ways in one
   piece is refused. Saved files are now format version 2; version 1 reads.
+  *(Since retired: older pieces are now only upgraded, never timed the old
+  way -- see "The answer key is the engine's own" below.)*
 - **The click is off unless asked for**, and is its own sample made by
   `make_samples.py` (added last, so the other sounds are unchanged). It is
   sound only: it is not a layer, is not drawn, and does not count as a layer
   sounding together.
+- **Exact loops.** A file is bars x the tempo's bar, rounded once to the
+  nearest audio sample, and each beat starts on the sample nearest its exact
+  time (`sampleAt` in render.js). A loop at 100 BPM stays in time with a DAW
+  at 100 BPM however often it repeats. Pulses still keep the musical
+  arithmetic exact, but no longer have to be a whole number of samples, so
+  very fine grids keep their tempo too.
+- **Examples loop on their whole pattern.** Each example is a whole number of
+  its pattern's repeats, so its WAV goes round the way the tool means loops
+  to. A check keeps it so for any example added later.
+- **The answer key is the engine's own.** The Python answers did their job
+  -- proving the port exact -- and were retired once the exact-loops change
+  meant they only checked a timing path the page never used. In their place:
+  `answers.json`, recorded from this engine (every example and the same 600
+  random pieces, in today's words, refusals with their messages), and checks
+  in engine.test.js on what correct sound is. The answer key catches any
+  change; the sound checks say whether a change is right. Recorded while the
+  Python checks still passed, so it starts from proven output. Retiring them
+  removed the older timing path from `buildPiece`; `upgradeSpec` is now the
+  only thing that reads the older words.
 - **The page prefers a whole span per page**: with a layer over 2 bars, it
   shows 4 or 2 bars at a time rather than 3, so a span is not split.

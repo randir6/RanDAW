@@ -642,9 +642,62 @@ lengths); the edit; and in the browser, the keyboard's keys and names, the
 chromatic keypad, the follow choice and the folding.
 
 **Parked here** (26 September 2026). What is waiting on decisions, in order,
-is in README.md under "Where things stand". The recommended next step is
-exact loop length (see NOTES.md, "The file is not exactly the tempo's
-length"), then sections.
+is in README.md under "Where things stand".
+
+---
+
+## Exact loops
+
+Taken up after a review of the project against its purpose: loops to drop
+into a DAW or looper.
+
+- **A file is exactly the tempo's length.** Beats used to snap to a grid of
+  pulses, each a whole number of audio samples, so a bar was the tempo's bar
+  rounded to fit: 8 bars of `spans` came out 15 ms long (794 parts per
+  million), which drifts a 16th note behind a DAW at the same tempo in about
+  three minutes. Now the file is bars x bar length, rounded once to the
+  nearest sample, and each beat starts on the sample nearest its exact time.
+  Pulses still keep the musical arithmetic exact; they just no longer have
+  to be whole samples.
+- **Very fine grids keep their tempo.** The same change removes the limit
+  where 3/4/5/7/11/13 in a 2 s bar collapsed the bar to 1.36 s.
+- **Older pieces are untouched.** A piece in the older words is timed on the
+  whole-sample grid as before, so the recorded Python answers still match to
+  the byte; the page upgrades such a piece as it opens it, so it gets the
+  exact timing. One formula (`sampleAt`) places pulses for both: for an
+  older piece it gives back exactly the whole-sample positions.
+- **Examples loop on their whole pattern.** Five of the seven were a part
+  number of their pattern's repeats (tresillo was 8 bars of a 3-bar pattern),
+  so their WAVs restarted the pattern part-way through. Only their lengths
+  changed: phase_study 14 bars, rests 21, scales 14, sparse_dub 4, tresillo 6.
+- **Checks: 111.** The file's exact length; every note on the sample nearest
+  its time, with nothing stray; a fine grid keeping its tempo; every example
+  a whole number of repeats. The first three fail against the old engine.
+
+## Retiring the Python answer key
+
+Once loops were exact, the Python answers only checked the older timing,
+which the page never uses -- yet they were the only checks on pitch
+shifting, mixing and the 16-bit output, and on 61 kinds of broken piece.
+
+- **A new answer key, recorded from this engine** (`test/answers.test.js`,
+  `test/record_answers.js`): every example and the same 600 random pieces,
+  in today's words, with verdict, grid and WAV fingerprints and each
+  refusal's message. Recorded while the Python checks still passed.
+- **Checks on the sound itself:** pitch shifts within a cent of equal
+  temperament, pitch and length moving together, resampling, other sample
+  rates, mixing by gain, and the 16-bit rule. A wrong semitone, an unrounded
+  gain and a different 16-bit rounding were each planted and each caught.
+- **Then the Python checks and the older timing path went.** `buildPiece`
+  reads only today's words; `upgradeSpec` converts older pieces, as the page
+  already did. Every accepted piece's grid and audio were unchanged by the
+  removal; 12 refusal messages for unconvertible older settings (a
+  `cycle_duration` of 0) changed, to say what to write instead, and were
+  re-recorded. About 500 kB of fixtures went.
+- **Checks: 119.**
+
+**Recommended next:** hosting, so the page can be tried on the iPad with a real looper,
+then sections.
 
 ---
 

@@ -1,9 +1,9 @@
 // Checks on the engine's rules, stated directly.
 //
-// parity.test.js proves the engine does what the Python version did. These
-// say what that IS, in plain terms -- so the rules stay written down once the
-// Python version is gone, and a deliberate change to one of them (rests, say)
-// fails a check that names the rule rather than just a changed fingerprint.
+// answers.test.js catches any change at all to what the engine makes. These
+// say what it SHOULD make, in plain terms -- so a deliberate change to a rule
+// (rests, say) fails a check that names the rule rather than just a changed
+// fingerprint, and a change meant to improve the sound can be judged by them.
 
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -14,13 +14,14 @@ import { pieceToDerived, pieceToExport } from "../src/derive.js";
 import { makeLayer } from "../src/layer.js";
 import { divmod, roundHalfEven, roundTo, toFixedHalfEven } from "../src/numbers.js";
 import { buildPiece } from "../src/piece.js";
+import { pitchShift, prepareSample, resampleLinear } from "../src/audio.js";
 import { finishMix, renderAudio } from "../src/render.js";
 import { degreeToSemitones } from "../src/scales.js";
 import {
   CLICK_DOWNBEAT, CLICK_SAMPLE, grid, schedule, STATUS_INACTIVE, STATUS_NOTE, STATUS_REST,
 } from "../src/schedule.js";
 import { formatSpec, readSpec, SpecError, upgradeSpec } from "../src/spec.js";
-import { decodeWav, encodeWav16 } from "../src/wav.js";
+import { decodeWav, encodeWav16, toInt16 } from "../src/wav.js";
 import { fingerprint, LIBRARY, renderWav, WEB } from "./helpers.js";
 
 const SAMPLES = LIBRARY.keys();
@@ -64,12 +65,66 @@ test("the tempo and the base set the bar", () => {
   assert.deepEqual([p.tempo, p.base, p.barDuration, p.click], [120, 4, 2, false]);
 });
 
+test("a file is exactly as long as its bars at its tempo, so it loops in time with a DAW", () => {
+  // 13 over 2 bars against 7 over 2 at 100 BPM: 364 pulses per bar, which
+  // do not divide a 2.4 s bar's 105,840 samples. Timed on a whole-sample
+  // pulse grid (as older pieces are) the 8 bars came out 15 ms long.
+  const spec = JSON.parse(readFileSync(join(WEB, "examples", "spans.json"), "utf8"));
+  const { piece: p, wav } = renderWav(spec);
+  assert.equal(p.totalSamples, 8 * 2.4 * 44100);
+  assert.equal(decodeWav(wav).channels[0].length, 8 * 2.4 * 44100);
+  assert.equal(p.totalDuration, 19.2);
+  assert.equal(p.barDuration, 2.4);
+  // A tempo whose bar is not a whole number of samples: the file is rounded
+  // once, to the nearest sample, rather than a little on every pulse.
+  const odd = piece({ tempo: 109.091, bars: 7, layer: [{ beats: 5, notes: [0], sample: "kick.wav" }] });
+  assert.equal(odd.totalSamples, Math.round((7 * 4 * 60 * 44100) / 109.091));
+});
+
+test("every example loops on its whole pattern, not part-way through it", () => {
+  // An example is the first thing a person hears; its WAV should loop the
+  // way the tool means loops to work.
+  for (const file of readdirSync(join(WEB, "examples"))) {
+    const p = piece(JSON.parse(readFileSync(join(WEB, "examples", file), "utf8")));
+    const { repeat_bars: repeat } = pieceToDerived(p);
+    assert.equal(p.bars % repeat, 0, `${file}: ${p.bars} bars of a pattern that repeats every ${repeat}`);
+  }
+});
+
+test("every note starts on the sample nearest its exact time", () => {
+  // A one-sample click as the sound, so each note shows up in the mix as a
+  // single non-zero sample exactly where it was placed.
+  const library = new Map([["tick.wav", { channels: [new Float32Array([1])], sampleRate: 44100 }]]);
+  const layers = [7, 13, 5, 11].map((beats, i) => ({ beats, over: 1 + (i % 2), notes: [0], sample: "tick.wav" }));
+  const p = buildPiece({ tempo: 97, bars: 4, layer: layers }, { samples: ["tick.wav"] });
+  const mix = renderAudio(schedule(p), { ...p, library });
+  const events = schedule(p);
+  for (const e of events) {
+    const exact = (e.pulse / p.totalPulses) * p.totalDuration * p.sampleRate;
+    const at = Math.round(exact);
+    assert.ok(Math.abs(at - exact) <= 0.5);
+    assert.ok(mix[at] >= 1, `layer ${e.layer} beat ${e.beat}: nothing at sample ${at}`);
+  }
+  // Nothing anywhere else: each non-zero sample is one of those notes.
+  const placed = new Set(events.map((e) => Math.round((e.pulse / p.totalPulses) * p.totalSamples)));
+  mix.forEach((value, i) => { if (value !== 0) assert.ok(placed.has(i), `stray sound at sample ${i}`); });
+});
+
+test("a very fine grid keeps its tempo instead of collapsing", () => {
+  // 3, 4, 5, 7, 11 and 13 need 60,060 pulses in a 2 s bar -- under 1.5
+  // samples each. On a whole-sample grid that rounded down to 1 and shrank
+  // the bar to 1.36 s; placing beats at their exact times has no such limit.
+  const layer = [3, 4, 5, 7, 11, 13].map((beats) => ({ beats, notes: [0], sample: "hat.wav" }));
+  const p = piece({ tempo: 120, bars: 2, layer });
+  assert.equal(p.pulsesPerBar, 60060);
+  assert.equal(p.totalDuration, 4);
+  assert.deepEqual(p.warnings, []);
+});
+
 test("the base beats always land on the grid, so the click can sound on them", () => {
-  // A lone 3-beat layer on a 4-beat base needs the bar in 12 pulses. An
-  // older piece left the base out, and needed only 3.
+  // A lone 3-beat layer on a 4-beat base needs the bar in 12 pulses.
   const three = { beats: 3, notes: [0], sample: "kick.wav" };
   assert.equal(piece({ bars: 1, layer: [three] }).pulsesPerBar, 12);
-  assert.equal(piece({ loops: 1, layer: [three] }).pulsesPerBar, 3);
 });
 
 test("a layer's timing does not change when another layer is added", () => {
@@ -217,9 +272,23 @@ test("an older piece is upgraded to tempo, base and bars", () => {
   assert.equal(upgradeSpec(current), current);
 });
 
-test("an older piece and its upgrade sound identical when the tempo comes out exact", () => {
-  const old = JSON.parse(readFileSync(join(WEB, "test", "fixtures", "legacy_examples", "tresillo.json"), "utf8"));
-  assert.deepEqual(renderWav(upgradeSpec(old)).wav, renderWav(old).wav);
+test("an older piece plays once upgraded, and is refused if it cannot be", () => {
+  // tresillo as it was saved before phase 12.
+  const old = {
+    cycle_duration: 2.0, loops: 8,
+    layer: [
+      { beats: 8, notes: [0], sample: "kick.wav", gain: 0.75, active: [1, 4, 7] },
+      { beats: 3, notes: [0], sample: "hat.wav", gain: 0.2 },
+    ],
+  };
+  // The engine reads only today's words; upgrading gives the same piece.
+  refused(old, "cycle_duration is an older setting");
+  const p = piece(upgradeSpec(old));
+  assert.deepEqual([p.tempo, p.bars, p.barDuration], [120, 8, 2]);
+  // An older setting that makes no sense is left for the engine to refuse,
+  // saying what to write instead.
+  refused({ ...old, cycle_duration: 0 }, 'cycle_duration is an older setting, and 0 cannot be turned into today\'s; give "tempo"');
+  refused(upgradeSpec({ ...old, cycle_duration: 0 }), "cycle_duration is an older setting");
 });
 
 // --- Sound -------------------------------------------------------------------------
@@ -258,6 +327,96 @@ test("WAV files survive a round trip, and stereo is averaged to mono", () => {
   assert.equal(stereo.channels.length, 2);
   assert.equal(stereo.sampleRate, 48000);
   assert.deepEqual([...stereo.channels[1]], [-0.25, -0.25]);
+});
+
+// --- The sound --------------------------------------------------------------------
+//
+// What correct sound IS, stated directly, so that a better resampler or
+// encoder can be judged against these rather than against the old bytes.
+
+// A sine tone: `seconds` long, at `hz`, sampled at `rate`.
+const tone = (hz, seconds = 1, rate = 44100) =>
+  Float32Array.from({ length: Math.round(seconds * rate) }, (_, i) => Math.sin((2 * Math.PI * hz * i) / rate));
+
+// A tone's pitch, measured: count its upward zero crossings, placing each
+// exactly by drawing a line between the samples either side of it.
+function measureHz(sound, rate = 44100) {
+  const crossings = [];
+  for (let i = 1; i < sound.length; i++) {
+    if (sound[i - 1] < 0 && sound[i] >= 0) crossings.push(i - 1 + -sound[i - 1] / (sound[i] - sound[i - 1]));
+  }
+  return ((crossings.length - 1) * rate) / (crossings.at(-1) - crossings[0]);
+}
+// How far apart two pitches are, in cents: hundredths of a semitone.
+const cents = (a, b) => 1200 * Math.log2(a / b);
+
+test("a pitch shift of 0 leaves the sound exactly as it was", () => {
+  const a = tone(440, 0.1);
+  assert.equal(pitchShift(a, 0), a);
+});
+
+test("pitch shifts land within a cent of equal temperament", () => {
+  const a = tone(440);
+  for (const semitones of [-12, -5, -1, 1, 7, 12, 19]) {
+    const want = 440 * 2 ** (semitones / 12);
+    const got = measureHz(pitchShift(a, semitones));
+    assert.ok(Math.abs(cents(got, want)) < 1, `${semitones}: ${got.toFixed(2)} Hz, wanted ${want.toFixed(2)}`);
+  }
+});
+
+test("pitch and length move together, like changing a record's speed", () => {
+  const a = tone(440);  // 44100 samples
+  assert.equal(pitchShift(a, 12).length, 22050);
+  assert.equal(pitchShift(a, -12).length, 88200);
+  assert.equal(pitchShift(a, 7).length, Math.round(44100 / 2 ** (7 / 12)));
+});
+
+test("resampling keeps a straight line straight and starts where the sound starts", () => {
+  const ramp = Float32Array.from({ length: 101 }, (_, i) => i / 100);
+  for (const length of [51, 150, 333]) {
+    const out = resampleLinear(ramp, length);
+    assert.equal(out.length, length);
+    assert.equal(out[0], 0);
+    // Position i of the new sound sits at i/length of the way along, where
+    // the ramp's value is (i/length) x 1.01 -- as long as it is inside it.
+    for (let i = 0; i < length; i++) {
+      const want = Math.min(1, (i / length) * 1.01);
+      assert.ok(Math.abs(out[i] - want) < 1e-6, `${length}: position ${i} is ${out[i]}, wanted ${want}`);
+    }
+  }
+});
+
+test("a sample recorded at another rate keeps its pitch and length", () => {
+  const at48k = { channels: [tone(1000, 1, 48000)], sampleRate: 48000 };
+  const ready = prepareSample(at48k, 44100);
+  assert.equal(ready.length, 44100);
+  assert.ok(Math.abs(cents(measureHz(ready), 1000)) < 1);
+});
+
+test("notes at the same moment add together, each scaled by its layer's gain", () => {
+  const library = new Map([["one.wav", { channels: [new Float32Array([1, 0.5])], sampleRate: 44100 }]]);
+  const events = [
+    { pulse: 0, semitones: 0, sample: "one.wav", gain: 0.25 },
+    { pulse: 0, semitones: 0, sample: "one.wav", gain: 0.5 },
+    { pulse: 1, semitones: 0, sample: "one.wav", gain: 1 },
+  ];
+  const mix = renderAudio(events, { totalPulses: 2, totalSamples: 4, sampleRate: 44100, library });
+  assert.deepEqual([...mix], [0.75, 0.375, 1, 0.5]);
+});
+
+test("16-bit samples: silence is 0, full scale is the extremes, and nothing is off by more than a step", () => {
+  assert.deepEqual([0, 0.5, -0.5, 1, -1, 2, -2].map(toInt16), [0, 16384, -16384, 32767, -32768, 32767, -32768]);
+  // The rule: round down to the step below, except that a value within
+  // 2^-17 of a step counts as reaching it (see wav.js for why).
+  assert.equal(toInt16(1 / 32768), 1);
+  assert.equal(toInt16(1 / 32768 - 2 ** -33), 1);
+  assert.equal(toInt16(1 / 32768 - 2 ** -30), 0);
+  // Any value survives writing and reading back to within one step.
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const values = Float32Array.from({ length: 20000 }, random);
+  const back = decodeWav(encodeWav16(values, 44100)).channels[0];
+  values.forEach((v, i) => assert.ok(Math.abs(back[i] - v) < 1 / 32768, `${v} came back as ${back[i]}`));
 });
 
 // --- Specs ----------------------------------------------------------------------

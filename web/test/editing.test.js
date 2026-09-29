@@ -377,7 +377,38 @@ test("editing: keyboard focus stays on the control just used", { skip }, () =>
         true }`);
     }
     assert.equal(await page.evaluate("document.activeElement.getAttribute('aria-label')"), "Beats up");
-    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').textContent"), "11");
+    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').value"), "11");
+  }));
+
+test("editing: a stepper's number can be typed in, kept whole and within its limits", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const type = (selector, text) => page.evaluate(`{
+      const box = document.querySelector(${JSON.stringify(selector)});
+      box.value = ${JSON.stringify(text)};
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    const value = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
+    let spec = example("tresillo");
+
+    await type(".card input[aria-label='Beats']", "20");
+    spec = setBeats(spec, 0, 20);
+    assert.equal(await fingerprint(page), print(spec));
+
+    await type(".piece-controls input[aria-label='Bars']", "12");
+    spec = setSetting(spec, "bars", 12);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Too many is brought down to the most allowed; a fraction is rounded.
+    await type(".card input[aria-label='Beats']", "1000");
+    assert.equal(await value(".card input[aria-label='Beats']"), "32");
+    await type(".card input[aria-label='Beats']", "6.6");
+    spec = setBeats(spec, 0, 7);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Nothing, or not a number, leaves things as they were.
+    await type(".card input[aria-label='Beats']", "");
+    assert.equal(await value(".card input[aria-label='Beats']"), "7");
+    assert.equal(await fingerprint(page), print(spec));
   }));
 
 test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>

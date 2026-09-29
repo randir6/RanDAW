@@ -62,11 +62,24 @@ function focusAt(root, path) {
 }
 
 // A number with − and + buttons either side, and optionally a unit after.
+// The number is a box that can be typed in too, to jump straight to 100
+// rather than click there. What is typed is rounded to a whole number and
+// kept within min and max; a refused change puts the box back.
 function stepper(label, value, onChange, { min = -Infinity, max = Infinity, unit = null } = {}) {
   return h("span", { class: "stepper" },
     h("span", { class: "label" }, label),
     h("button", { type: "button", "aria-label": `${label} down`, disabled: value <= min, onclick: () => onChange(value - 1) }, "−"),
-    h("span", { class: "value" }, String(value)),
+    h("input", {
+      type: "number", class: "value", step: "1", value: String(value), inputmode: "numeric",
+      min: Number.isFinite(min) ? String(min) : null, max: Number.isFinite(max) ? String(max) : null,
+      "aria-label": label,
+      onchange: (e) => {
+        const typed = e.target.value.trim() === "" ? NaN : Number(e.target.value);
+        const n = Math.min(max, Math.max(min, Math.round(typed)));
+        if (!Number.isFinite(n) || n === value || onChange(n) === false) e.target.value = String(value);
+      },
+      onkeydown: (e) => { if (e.key === "Enter") e.target.blur(); },
+    }),
     h("button", { type: "button", "aria-label": `${label} up`, disabled: value >= max, onclick: () => onChange(value + 1) }, "+"),
     unit && h("span", { class: "unit" }, unit),
   );

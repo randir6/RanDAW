@@ -359,7 +359,7 @@ In rough order of how much they matter:
 git checkout claude/polyrhythm-vision-setup-jfos3r
 cd web
 node build.js      # -> dist/randaw.html; open it in a browser
-npm test           # 107 checks; the browser ones need Chromium (CHROMIUM=path)
+npm test           # 106 checks; the browser ones need Chromium (CHROMIUM=path)
 ```
 
 Then read `PHASES.md` from "Phase 12" down, and the Open questions and

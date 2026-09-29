@@ -10,8 +10,8 @@
 // result is valid, records it for undo, and plays it.
 
 import {
-  addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE, MAX_BEATS,
-  MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
+  addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE,
+  maxBeats, MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
   setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
@@ -223,7 +223,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         }, "S")),
       menu("Sample", layer.sample, samples.map((n) => [n, n.replace(/\.wav$/i, "")]),
         (v) => edit((s) => setLayer(s, i, "sample", v))),
-      stepper("Beats", layer.beats, (n) => edit((s) => setBeats(s, i, n)), { min: 1, max: MAX_BEATS }),
+      stepper("Beats", layer.beats, (n) => edit((s) => setBeats(s, i, n)), { min: 1, max: maxBeats(info.over) }),
       stepper("over", info.over, (n) => edit((s) => setOver(s, i, n)),
         { min: 1, max: MAX_OVER, unit: info.over === 1 ? "bar" : "bars" }),
       menu("Pitch", key, [["notes", "semitones"], ["degrees", "scale degrees"]],

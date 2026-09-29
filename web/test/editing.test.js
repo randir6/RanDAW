@@ -409,6 +409,15 @@ test("editing: a stepper's number can be typed in, kept whole and within its lim
     await type(".card input[aria-label='Beats']", "");
     assert.equal(await value(".card input[aria-label='Beats']"), "7");
     assert.equal(await fingerprint(page), print(spec));
+
+    // 32 beats a bar: spread over 10 bars, a layer can have 320.
+    await type(".card input[aria-label='over']", "10");
+    spec = setOver(spec, 0, 10);
+    assert.equal(await fingerprint(page), print(spec));
+    await type(".card input[aria-label='Beats']", "320");
+    spec = setBeats(spec, 0, 320);
+    assert.equal(await value(".card input[aria-label='Beats']"), "320");
+    assert.equal(await fingerprint(page), print(spec));
   }));
 
 test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>

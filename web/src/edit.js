@@ -19,10 +19,13 @@ import { CLICK_SAMPLE } from "./schedule.js";
 
 // Sensible ends for the + and - buttons. Not rules of the engine, which has
 // no upper limits, just where the buttons stop.
-export const MAX_BEATS = 32;
-export const MAX_OVER = 8;        // bars one layer's beats can spread across
+export const MAX_BEATS_PER_BAR = 32;  // a layer's beats, for each bar they spread across
 export const MAX_BASE = 16;       // beats per bar
 export const MAX_BARS = 64;
+export const MAX_OVER = MAX_BARS;  // bars one layer's beats can spread across
+// The most beats a layer can have: 32 over 1 bar, 320 over 10 bars. The limit
+// goes by the bar so a beat is never squashed too thin to draw or to tap.
+export const maxBeats = (over = 1) => MAX_BEATS_PER_BAR * over;
 export const MAX_POSITIONS = 32;  // notes and rests in one sequence
 export const MIN_TEMPO = 20;
 export const MAX_TEMPO = 400;
@@ -123,17 +126,23 @@ function tidyActive(layer) {
 export function setBeats(spec, index, beats) {
   const next = copy(spec);
   const layer = next.layer[index];
-  layer.beats = clamp(beats, 1, MAX_BEATS);
+  layer.beats = clamp(beats, 1, maxBeats(layer.over));
   tidyActive(layer);
   return next;
 }
 
 // How many bars a layer's beats spread across. 1, the usual, is written by
-// leaving `over` out.
+// leaving `over` out. Squeezing the beats into fewer bars brings the beat
+// count down with them if it would be more than those bars can hold.
 export function setOver(spec, index, over) {
   const next = copy(spec);
+  const layer = next.layer[index];
   const value = clamp(over, 1, MAX_OVER);
-  put(next.layer[index], "over", value === 1 ? null : value);
+  put(layer, "over", value === 1 ? null : value);
+  if (layer.beats > maxBeats(value)) {
+    layer.beats = maxBeats(value);
+    tidyActive(layer);
+  }
   return next;
 }
 

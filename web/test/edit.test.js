@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, formatSequence, insertPosition, MAX_OVER, parseSequence, removeLayer, removePosition,
+  addLayer, duplicateLayer, formatSequence, insertPosition, MAX_BARS, MAX_OVER, parseSequence, removeLayer, removePosition,
   scaleGains, setBeats, setLayer, setOver, setPosition, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { buildPiece } from "../src/piece.js";
@@ -52,6 +52,23 @@ test("a layer's span of bars stays within its limits, and 1 is written by leavin
   assert.equal(setOver(spec, 0, 99).layer[0].over, MAX_OVER);
   assert.equal(Object.hasOwn(setOver(setOver(spec, 0, 2), 0, 1).layer[0], "over"), false);
   assert.equal(Object.hasOwn(setOver(spec, 0, 0).layer[0], "over"), false, "never less than one bar");
+});
+
+test("a layer can have up to 32 beats for each bar it spreads across", () => {
+  const spec = { bars: 12, layer: [{ beats: 7, notes: [0], sample: "kick.wav" }] };
+  assert.equal(setBeats(spec, 0, 100).layer[0].beats, 32);
+  const overTen = setOver(spec, 0, 10);
+  assert.equal(setBeats(overTen, 0, 320).layer[0].beats, 320);
+  assert.equal(setBeats(overTen, 0, 400).layer[0].beats, 320);
+  assert.equal(setOver(spec, 0, 99).layer[0].over, MAX_BARS);
+});
+
+test("spreading a layer over fewer bars brings too many beats down with it", () => {
+  const spec = { bars: 12, layer: [{ beats: 300, over: 10, active: [1, 50, 90], notes: [0], sample: "kick.wav" }] };
+  const two = setOver(spec, 0, 2).layer[0];
+  assert.equal(two.beats, 64);
+  assert.deepEqual(two.active, [1, 50]);
+  assert.equal(setOver(spec, 0, 12).layer[0].beats, 300, "more bars leave the beats alone");
 });
 
 test("switching a beat off and on again leaves the layer as it was", () => {

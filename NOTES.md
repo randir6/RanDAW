@@ -222,6 +222,47 @@ Design notes from thinking it through, so the work does not start cold:
 
 ## Decisions worth remembering
 
+- **Links carry the piece: name, three words, tail; all of it frozen.** The
+  address after `#` holds the piece (`link.js`), so sharing needs no
+  server. Plain JSON squeezed with deflate came to 200-280 characters.
+  `pack.js` gets a piece into roughly 60-200 bits by writing values as
+  places in lists of likely ones, beat patterns as even spreads (13 of the
+  14 in the examples are), melodies as a chord and a shape where they are
+  one, and bars as "until it repeats" where they are. Nothing about the
+  editor changed to allow it. The link is then `#name.three-words.tail`
+  (tresillo: `#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`, 55 characters; the
+  examples 47-66, varying with how long their words happen to be). The name
+  is readable and outside the checks, so editing it renames the piece. The
+  words (6,510 from EFF's long list, after passes for friendliness that
+  stop at the fewest words three can be and still hold 38 bits) hold the first 32 bits -- the skeleton, written
+  first on purpose -- plus 6 bits checking just them, so they stay put
+  while details change. The tail ends with two characters checking the
+  whole piece (1 in 4,096 damaged links gets through; one character let a
+  cut-short link open a different piece in the checks). Words are less
+  dense than base64 (about 1.7 bits a character against 6), so the words
+  cost length; they are there to be read, said and recognised. Every link
+  is unpacked and compared before use; a piece the packed form cannot give
+  back exactly gets the deflate form (`#z`) instead. The lists in `pack.js`
+  and `words.js` are the format: changing one means a new kind of link.
+  Fewer than 20 characters for every piece is impossible without storing
+  pieces somewhere (there are more pieces than short strings).
+
+- **Keeping work in the browser is two layers, and never a save.** Since the
+  page is hosted, reloads and new visits are the normal way back to it, so
+  one draft slot was not enough: any example picked, or any ?example= link
+  followed, replaced it, and a reload of a link reopened the example. Now
+  (`draft.js`) each tab keeps its own piece and undo history for a reload
+  at the same address (sessionStorage), and the browser keeps the last 12
+  pieces edited, each under its own id (localStorage). A piece is kept only
+  once edited, renamed or opened from a file, so browsing examples never
+  pushes one out. If another tab wrote the same piece since this tab last
+  did, this tab's version becomes a new piece rather than replacing it. The
+  page asks the browser to keep its storage (`navigator.storage.persist`),
+  which is only a request: Safari still clears a site's storage after some
+  weeks unused unless it is on the Home Screen. Not done: keeping pieces
+  anywhere but this browser (an account, a server) -- moving between
+  devices is still Save piece, or Save page.
+
 - **A rest is `"-"`, in both notations.** It cannot be a number, because 0 is
   already meaningful in each: unison in semitones, one step below the root as
   a degree. `"-5"` is still minus five; only an exact `"-"` is a rest.

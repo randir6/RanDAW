@@ -11,9 +11,10 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setAllBeats, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
+import { pieceToLink } from "../src/link.js";
 import { planSwap } from "../src/player.js";
 import { findChromium, launch } from "./browser.js";
 import { LIBRARY, readJson, renderWav, WEB } from "./helpers.js";
@@ -268,6 +269,109 @@ test("editing: the piece survives a reload", { skip }, () =>
     }
   }));
 
+// Reload the tab itself, as the browser's reload button does, and wait for
+// the new page (the old one is marked so it cannot be mistaken for it).
+async function reload(page) {
+  await page.evaluate("window.oldPage = true, location.reload(), true");
+  await page.waitFor("!window.oldPage && document.documentElement.dataset.ready === '1'");
+}
+
+test("editing: a reload of the tab carries on, undo history and all, even from an ?example= link", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const spec = example("tresillo");
+    const off = toggleBeat(spec, 0, 2);
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    await reload(page);
+    assert.equal(await fingerprint(page), print(off));
+    await click(page, "button[title^='Undo']");
+    assert.equal(await fingerprint(page), print(spec));
+  }));
+
+test("editing: looking at an example does not replace the piece being edited", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const edited = toggleBeat(example("tresillo"), 1, 1);
+    await tap(page, '.band[data-layer="1"][data-beat="1"]');
+    await fingerprint(page);
+    await page.evaluate(`const menu = document.getElementById("examples");
+      menu.value = "rests"; menu.dispatchEvent(new Event("change")), true`);
+    assert.equal(await fingerprint(page), print(example("rests")));
+    // The edited piece is still offered, and a new visit opens it.
+    const offered = await page.evaluate(`[...document.querySelectorAll("#examples optgroup option")]
+      .map((o) => o.text.split(" — ")[0])`);
+    assert.deepEqual(offered, ["tresillo"]);
+    const again = await browser.open(PAGE);
+    try {
+      assert.equal(await fingerprint(again), print(edited));
+    } finally {
+      await again.close();
+    }
+  }));
+
+test("editing: two tabs editing the same piece keep both versions", { skip }, () =>
+  editing("tresillo", async (page) => {
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    const other = await browser.open(PAGE);  // opens the same kept piece
+    try {
+      await tap(other, '.band[data-layer="1"][data-beat="1"]');
+      await fingerprint(other);
+      await tap(page, '.band[data-layer="0"][data-beat="1"]');
+      await fingerprint(page);
+      const kept = await page.evaluate(`JSON.parse(localStorage.getItem("randaw-pieces")).map((p) => p.spec)`);
+      const base = example("tresillo");
+      assert.equal(kept.length, 2);
+      assert.deepEqual(new Set(kept.map((s) => print(s))), new Set([
+        print(toggleBeat(toggleBeat(base, 0, 2), 0, 1)),
+        print(toggleBeat(toggleBeat(base, 0, 2), 1, 1)),
+      ]));
+    } finally {
+      await other.close();
+    }
+  }));
+
+test("editing: the address always holds the piece, and opens it with nothing stored", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const off = toggleBeat(example("tresillo"), 0, 2);
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    await page.waitFor("!document.documentElement.dataset.linking");
+    const address = await page.evaluate("location.href");
+    assert.equal(new URL(address).hash, await pieceToLink("tresillo", off));
+    assert.equal(new URL(address).searchParams.get("example"), null, "the link says which piece it is now");
+
+    // A new tab, in a browser that has kept nothing.
+    await page.evaluate("localStorage.clear(), true");
+    const again = await browser.open(address);
+    try {
+      assert.equal(await fingerprint(again), print(off));
+      assert.equal(await again.evaluate("document.getElementById('examples').options[0].text"), "Link: tresillo");
+    } finally {
+      await again.close();
+    }
+  }));
+
+test("editing: a link pasted into an open tab opens its piece", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const link = await pieceToLink("rests", example("rests"));
+    await page.evaluate(`location.hash = ${JSON.stringify(link)}, true`);
+    await page.waitFor("document.title === 'rests · RanDAW'");
+    assert.equal(await fingerprint(page), print(example("rests")));
+  }));
+
+test("editing: a broken link says so, and the page opens something else", { skip }, () =>
+  editing("tresillo", async () => {
+    const link = await pieceToLink("rests", example("rests"));
+    const broken = await browser.open(`${PAGE}${link.slice(0, -4)}`);
+    try {
+      assert.equal(await broken.evaluate("document.getElementById('message').className"), "message error");
+      assert.match(await broken.evaluate("document.getElementById('message').textContent"), /cut short/);
+      assert.equal(await fingerprint(broken), print(example("tresillo")));
+    } finally {
+      await broken.close();
+    }
+  }));
+
 test("editing: while playing, an edit waits for the next bar and playback carries on", { skip }, () =>
   editing("tresillo", async (page) => {
     // The browser's audio clock runs in real time even with no speakers, so
@@ -379,6 +483,31 @@ test("editing: Escape puts the position keypad away", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
   }));
 
+test("editing: with more than ten beats, all of a layer's beats switch on or off at once", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const count = () => page.evaluate("document.querySelector('.card').querySelectorAll('.all-beats').length");
+    let spec = example("tresillo");
+    assert.equal(await count(), 0, "not for 8 beats");
+
+    await page.evaluate(`{
+      const box = document.querySelector(".card input[aria-label='Beats']");
+      box.value = "12";
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    spec = setBeats(spec, 0, 12);
+    assert.equal(await count(), 2);
+
+    await click(page, ".card .all-beats", 1);  // No beats
+    spec = setAllBeats(spec, 0, false);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=true]').length"), 0);
+
+    await click(page, ".card .all-beats", 0);  // All beats
+    spec = setAllBeats(spec, 0, true);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=false]').length"), 0);
+  }));
+
 test("editing: keyboard focus stays on the control just used", { skip }, () =>
   editing("tresillo", async (page) => {
     // Focus the first card's "Beats up" and press it three times, as a
@@ -393,7 +522,47 @@ test("editing: keyboard focus stays on the control just used", { skip }, () =>
         true }`);
     }
     assert.equal(await page.evaluate("document.activeElement.getAttribute('aria-label')"), "Beats up");
-    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').textContent"), "11");
+    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').value"), "11");
+  }));
+
+test("editing: a stepper's number can be typed in, kept whole and within its limits", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const type = (selector, text) => page.evaluate(`{
+      const box = document.querySelector(${JSON.stringify(selector)});
+      box.value = ${JSON.stringify(text)};
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    const value = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
+    let spec = example("tresillo");
+
+    await type(".card input[aria-label='Beats']", "20");
+    spec = setBeats(spec, 0, 20);
+    assert.equal(await fingerprint(page), print(spec));
+
+    await type(".piece-controls input[aria-label='Bars']", "12");
+    spec = setSetting(spec, "bars", 12);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Too many is brought down to the most allowed; a fraction is rounded.
+    await type(".card input[aria-label='Beats']", "1000");
+    assert.equal(await value(".card input[aria-label='Beats']"), "32");
+    await type(".card input[aria-label='Beats']", "6.6");
+    spec = setBeats(spec, 0, 7);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Nothing, or not a number, leaves things as they were.
+    await type(".card input[aria-label='Beats']", "");
+    assert.equal(await value(".card input[aria-label='Beats']"), "7");
+    assert.equal(await fingerprint(page), print(spec));
+
+    // 32 beats a bar: spread over 10 bars, a layer can have 320.
+    await type(".card input[aria-label='over']", "10");
+    spec = setOver(spec, 0, 10);
+    assert.equal(await fingerprint(page), print(spec));
+    await type(".card input[aria-label='Beats']", "320");
+    spec = setBeats(spec, 0, 320);
+    assert.equal(await value(".card input[aria-label='Beats']"), "320");
+    assert.equal(await fingerprint(page), print(spec));
   }));
 
 test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>

@@ -385,6 +385,9 @@ function refresh() {
   }
   $("clock").textContent = `${t.toFixed(2)} / ${totalDuration.toFixed(2)} s`;
   $("play").textContent = player.isPlaying() ? "Pause" : "Play";
+  // Nothing to stop, or rewind, when already stopped at the very start.
+  // (And not for a still frame, where Play is off too.)
+  $("stop").disabled = $("play").disabled || (!player.isPlaying() && player.barPosition() === 0);
   $("pending").hidden = !player.isSwapPending();
   // The drawing runs this far behind the audio being sent, to stay in step
   // with what you hear (see player.js). Said on the page when it is enough
@@ -418,6 +421,14 @@ async function togglePlay() {
     await player.play();
     startTicking();
   }
+}
+
+// Stop, and go back to the start: unlike Pause, Play then always begins from
+// the same place, so a change can be heard from the top each time.
+function stopPlay() {
+  player.stop();
+  player.seek(0);
+  refresh();
 }
 
 function changePage(delta) {
@@ -455,6 +466,7 @@ window.addEventListener("resize", () => {
 // --- Controls ---------------------------------------------------------------------
 
 $("play").addEventListener("click", togglePlay);
+$("stop").addEventListener("click", stopPlay);
 $("mode-grid").addEventListener("click", () => chooseDrawing("grid"));
 $("mode-rings").addEventListener("click", () => chooseDrawing("rings"));
 $("mode-polygons").addEventListener("click", () => chooseDrawing("polygons"));

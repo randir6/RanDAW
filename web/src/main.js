@@ -428,8 +428,9 @@ function showFingerprint() {
 
 // Give the piece a new name: the title, and the name of anything saved.
 // Characters that file systems refuse are left out; an empty name is ignored.
+const cleanName = (text) => text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
 function rename(text) {
-  const name = text.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60);
+  const name = cleanName(text);
   if (name) state.name = name;
   remember();
   show();
@@ -656,8 +657,9 @@ window.addEventListener("hashchange", async () => {
   if (!isLink(location.hash) || location.hash === state.link) return;
   try {
     const piece = await linkToPiece(location.hash);
-    if (open(piece.spec, piece.name)) {
-      showOther(`Link: ${piece.name}`);
+    const name = cleanName(piece.name) || "untitled";
+    if (open(piece.spec, name)) {
+      showOther(`Link: ${name}`);
       showKept();
     }
   } catch (e) {
@@ -673,7 +675,7 @@ $("save-page").addEventListener("click", () => {
 // --- Start -------------------------------------------------------------------------
 
 // Which piece to open first: the one this tab had, if this is a reload;
-// else a piece written into the link (#piece=...); else ?example=name in
+// else a piece written into the link (#p...); else ?example=name in
 // the address; else the piece saved into this page; else the one edited
 // last in this browser; else the first example.
 //
@@ -688,6 +690,7 @@ async function start() {
   if (!resume && isLink(location.hash)) {
     try {
       linked = await linkToPiece(location.hash);
+      linked.name = cleanName(linked.name) || "untitled";
     } catch (e) {
       if (!(e instanceof SpecError)) throw e;
       problem = e.message;
@@ -712,8 +715,8 @@ async function start() {
   }
   if (!opened && embedded) {
     showOther(`Piece: ${embedded.name}`);
-    // If it cannot be used, say why, over whatever opens instead.
-    if (!(opened = open(embedded.spec, embedded.name))) problem = $("message").textContent;
+    open(embedded.spec, embedded.name);  // if it cannot be used, its message stays
+    opened = true;
   }
   if (!opened && latest && (opened = open(latest.spec, latest.name, { id: latest.id, kept: true, seen: latest.saved }))) {
     showOther(`Last edited: ${latest.name}`);

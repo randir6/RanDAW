@@ -15,6 +15,7 @@ The program is one web page. Build it, then open it in any browser:
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
 npm test                      # 106 checks, should all pass
+npm run shots                 # screenshots at iPad, laptop, phone -> web/dist/shots/
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -320,6 +321,8 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 - **`PHASE1_SPEC.md`** — the original phase 1 spec, kept as written.
 - **`PHASES.md`** — the plan, and what each finished phase settled and why.
   **Read this to find out where the work got to.**
+- **`DESIGN.md`** — how the page should look and feel, and how to check a
+  change by eye (`npm run shots`).
 - **`NOTES.md`** — known limitations (with measurements), the backlog, and
   decisions worth remembering. Read the backlog before proposing new work.
 

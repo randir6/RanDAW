@@ -102,8 +102,9 @@ export async function launch(chromium) {
     }
 
     // A picture of the page as it is now, as PNG bytes. `width` and
-    // `height` set the size of the window first.
-    async function screenshot({ width = 1280, height = 900, dark = false } = {}) {
+    // `height` set the size of the window first; `full` takes the whole
+    // page, however far it scrolls, instead of just the window.
+    async function screenshot({ width = 1280, height = 900, dark = false, full = false } = {}) {
       await send("Emulation.setDeviceMetricsOverride",
         { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
       await send("Emulation.setEmulatedMedia",
@@ -111,7 +112,11 @@ export async function launch(chromium) {
       // Give the page a moment to react to its new size (it redraws a little
       // after a resize stops) before taking the picture.
       await new Promise((r) => setTimeout(r, 400));
-      const { data } = await send("Page.captureScreenshot", { format: "png" }, sessionId);
+      const whole = full && {
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height: await evaluate("document.documentElement.scrollHeight"), scale: 1 },
+      };
+      const { data } = await send("Page.captureScreenshot", { format: "png", ...whole }, sessionId);
       return Buffer.from(data, "base64");
     }
 

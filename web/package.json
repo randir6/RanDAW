@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "shots": "node shots.js"
   }
 }

@@ -344,8 +344,11 @@ In rough order of how much they matter:
 5. **Your own samples** in the page -- where they are kept, how big, whether
    "Save page" carries them. Real recordings would also want leading silence
    trimmed automatically, and maybe a per-layer nudge for feel.
-6. **Hosting**, so the iPad can open the page from an address. Deliberately
-   later.
+6. **Hosting**, so the iPad can open the page from an address. Set up as
+   GitHub Pages: `.github/workflows/pages.yml` runs the checks, builds the
+   page and publishes it to https://randir6.github.io/RanDAW/ on every push
+   to the default branch. It needs the repo public and Settings -> Pages ->
+   Source set to "GitHub Actions".
 7. Small ones: the `rests` example is 6 bars of a pattern that repeats every
    21 (the page offers "Use 21 bars"); more drawings were floated (a
    scrolling timeline like a DAW's arrangement view).

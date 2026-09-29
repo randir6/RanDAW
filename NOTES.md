@@ -222,6 +222,21 @@ Design notes from thinking it through, so the work does not start cold:
 
 ## Decisions worth remembering
 
+- **Links carry the piece; the packed form is frozen.** The address after
+  `#` holds the piece (`link.js`), so sharing needs no server. Plain JSON
+  squeezed with deflate came to 200-280 characters; `pack.js` gets the
+  examples to 22-41 (tresillo 22) by writing values as places in lists of
+  likely ones, beat patterns as even spreads (13 of the 14 in the examples
+  are), melodies as a chord and a shape where they are one, bars as "until
+  it repeats" where they are, and an example's name as its number. Nothing
+  about the editor changed to allow it. Every link is checked by unpacking
+  it before it is used; a piece the packed form cannot give back exactly
+  gets the deflate form instead. Its lists are part of the format: changing
+  one means a new format letter, keeping the old for links already made.
+  Fewer than 20 characters for every piece is impossible without storing
+  pieces somewhere (there are more pieces than short strings); a custom name
+  is the largest single cost, about one character per letter.
+
 - **Keeping work in the browser is two layers, and never a save.** Since the
   page is hosted, reloads and new visits are the normal way back to it, so
   one draft slot was not enough: any example picked, or any ?example= link

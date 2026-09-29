@@ -14,6 +14,7 @@ import {
   addLayer, duplicateLayer, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
+import { pieceToLink } from "../src/link.js";
 import { planSwap } from "../src/player.js";
 import { findChromium, launch } from "./browser.js";
 import { LIBRARY, readJson, renderWav, WEB } from "./helpers.js";
@@ -326,6 +327,48 @@ test("editing: two tabs editing the same piece keep both versions", { skip }, ()
       ]));
     } finally {
       await other.close();
+    }
+  }));
+
+test("editing: the address always holds the piece, and opens it with nothing stored", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const off = toggleBeat(example("tresillo"), 0, 2);
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await fingerprint(page);
+    await page.waitFor("!document.documentElement.dataset.linking");
+    const address = await page.evaluate("location.href");
+    assert.equal(new URL(address).hash, await pieceToLink("tresillo", off));
+    assert.equal(new URL(address).searchParams.get("example"), null, "the link says which piece it is now");
+
+    // A new tab, in a browser that has kept nothing.
+    await page.evaluate("localStorage.clear(), true");
+    const again = await browser.open(address);
+    try {
+      assert.equal(await fingerprint(again), print(off));
+      assert.equal(await again.evaluate("document.getElementById('examples').options[0].text"), "Link: tresillo");
+    } finally {
+      await again.close();
+    }
+  }));
+
+test("editing: a link pasted into an open tab opens its piece", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const link = await pieceToLink("rests", example("rests"));
+    await page.evaluate(`location.hash = ${JSON.stringify(link)}, true`);
+    await page.waitFor("document.title === 'rests · RanDAW'");
+    assert.equal(await fingerprint(page), print(example("rests")));
+  }));
+
+test("editing: a broken link says so, and the page opens something else", { skip }, () =>
+  editing("tresillo", async () => {
+    const link = await pieceToLink("rests", example("rests"));
+    const broken = await browser.open(`${PAGE}${link.slice(0, -4)}`);
+    try {
+      assert.equal(await broken.evaluate("document.getElementById('message').className"), "message error");
+      assert.match(await broken.evaluate("document.getElementById('message').textContent"), /cut short/);
+      assert.equal(await fingerprint(broken), print(example("tresillo")));
+    } finally {
+      await broken.close();
     }
   }));
 

@@ -19,7 +19,7 @@ import { WEB } from "./helpers.js";
 const SRC = join(WEB, "src");
 const ENGINE = [
   "numbers.js", "scales.js", "layer.js", "spec.js", "piece.js", "schedule.js",
-  "derive.js", "audio.js", "wav.js", "render.js", "edit.js", "fingerprint.js", "share.js",
+  "derive.js", "audio.js", "wav.js", "render.js", "edit.js", "fingerprint.js", "share.js", "link.js",
 ];
 const PAGE = ["drawing.js", "clock.js", "view.js", "rings.js", "polygons.js", "editor.js", "player.js", "draft.js", "files.js", "main.js"];
 

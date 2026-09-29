@@ -12,6 +12,7 @@ import { scaleGains, toggleBeat } from "./edit.js";
 import { renderEditor } from "./editor.js";
 import { download, fromBase64 } from "./files.js";
 import { fnv1a } from "./fingerprint.js";
+import { isLink, linkToPiece, pieceToLink } from "./link.js";
 import { buildPiece } from "./piece.js";
 import { createPlayer } from "./player.js";
 import { finishMix, renderAudio } from "./render.js";
@@ -37,7 +38,7 @@ const PRISTINE = "<!doctype html>\n" + document.documentElement.outerHTML;
 
 // The page's address, less any #part: a reload of the tab at this same
 // address carries on with the piece it had (see draft.js).
-const ADDRESS = location.href.split("#")[0];
+const address = () => location.href.split("#")[0];
 
 // How long a piece may be. A policy of this page, not a rule of the engine:
 // past a couple of minutes the file gets unwieldy to open and share.
@@ -105,6 +106,7 @@ const state = {
   id: null,
   kept: false,
   seen: undefined,
+  link: "",  // the #part last put in the address (link.js)
   history: [],
   future: [],
   selected: null,
@@ -264,8 +266,35 @@ function remember({ keep = true } = {}) {
       if (got.id !== was) showKept();
     }
   }
-  const { id, name, spec, kept, seen, future } = state;
-  saveTab(ADDRESS, { id, name, spec, kept, seen, future, history: state.history.slice(-HISTORY_KEPT) });
+  saveThisTab();
+  linkSoon();
+}
+function saveThisTab() {
+  const { id, name, spec, kept, seen, future, link } = state;
+  saveTab(address(), { id, name, spec, kept, seen, future, link, history: state.history.slice(-HISTORY_KEPT) });
+}
+
+// Write the piece into the address (link.js), so the address bar is always
+// a link to the piece as it is now: to share, bookmark, or reload with
+// nothing stored. Squeezing it takes a moment, so it is done just after;
+// quick edits in a row only write the last. data-linking on the page says a
+// link is being written, for the automated checks.
+let linking = Promise.resolve();
+let linkCount = 0;
+function linkSoon() {
+  const n = ++linkCount;
+  document.documentElement.dataset.linking = "1";
+  linking = pieceToLink(state.name, state.spec).then((link) => {
+    if (n !== linkCount) return;
+    const url = new URL(location.href);
+    url.searchParams.delete("example");  // the link says which piece it is now
+    url.hash = link;
+    history.replaceState(history.state, "", url);
+    state.link = location.hash;
+    saveThisTab();
+    delete document.documentElement.dataset.linking;
+  });
+  return linking;
 }
 
 // Making the sound is left until just after the screen has been redrawn, by
@@ -596,6 +625,47 @@ $("download").addEventListener("click", () => {
 $("save-piece").addEventListener("click", () => {
   download(formatSpec(state.spec), `${state.name}.json`, "application/json");
 });
+$("share-link").addEventListener("click", async () => {
+  await linking;
+  if (location.protocol === "file:") {
+    say("A link to a piece only works from the page's web address, not a copy on this device. " +
+      "To share from here, use Save page.");
+    return;
+  }
+  const url = location.href;
+  // On a phone or tablet, the system's share sheet; elsewhere, the clipboard.
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try {
+      await navigator.share({ title: `${state.name} · RanDAW`, url });
+    } catch {
+      // closed without sharing
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    say("Link copied. It holds the whole piece, so it opens anywhere without anything being stored.");
+  } catch {
+    say("Copy the address from the address bar: it holds the whole piece.");
+  }
+});
+
+// A link pasted into this tab's address bar changes only the #part, which
+// does not reload the page, so open its piece here.
+window.addEventListener("hashchange", async () => {
+  if (!isLink(location.hash) || location.hash === state.link) return;
+  try {
+    const piece = await linkToPiece(location.hash);
+    if (open(piece.spec, piece.name)) {
+      showOther(`Link: ${piece.name}`);
+      showKept();
+    }
+  } catch (e) {
+    if (!(e instanceof SpecError)) throw e;
+    say(e.message, "error");
+  }
+});
+
 $("save-page").addEventListener("click", () => {
   download(pageWithPiece(PRISTINE, state.name, state.spec), `${state.name}.html`, "text/html");
 });
@@ -603,39 +673,72 @@ $("save-page").addEventListener("click", () => {
 // --- Start -------------------------------------------------------------------------
 
 // Which piece to open first: the one this tab had, if this is a reload;
-// else ?example=name in the address; else the piece saved into this page;
-// else the one edited last in this browser; else the first example.
-const params = new URLSearchParams(location.search);
-const tab = loadTab(ADDRESS);
-const embedded = readBlock("randaw-piece");  // null, or { name, spec }
-const asked = examples.find((x) => x.name === params.get("example"));
-const latest = asked || embedded ? null : keptPieces()[0];
-if (tab && open(tab.spec, tab.name, tab)) {
-  if (!tab.kept && examples.some((x) => x.name === tab.name)) $("examples").value = tab.name;
-  else showOther(`${tab.kept ? "Last edited" : "Piece"}: ${tab.name}`);
-} else if (asked) {
-  $("examples").value = asked.name;
-  open(asked.spec, asked.name);
-} else if (embedded) {
-  showOther(`Piece: ${embedded.name}`);
-  open(embedded.spec, embedded.name);
-} else if (latest && open(latest.spec, latest.name, { id: latest.id, kept: true, seen: latest.saved })) {
-  showOther(`Last edited: ${latest.name}`);
-} else {
-  $("examples").value = examples[0].name;
-  open(examples[0].spec, examples[0].name);
-}
-showKept();
-
-// ?t=3.2 shows a still frame at 3.2 seconds, without sound -- for linking to
-// a moment, and for the automated checks, which have no speakers.
-if (params.has("t") && state.made) {
-  const t = parseFloat(params.get("t"));
-  if (!Number.isNaN(t)) {
-    player.seek(t / state.made.piece.barDuration);
-    $("play").disabled = true;
-    $("hint").textContent = `Still frame at ${t.toFixed(2)} s — remove ?t= from the address to play`;
-    refresh();
+// else a piece written into the link (#piece=...); else ?example=name in
+// the address; else the piece saved into this page; else the one edited
+// last in this browser; else the first example.
+//
+// A reload keeps the tab's own piece, with its undo history, as long as the
+// link is still the one this tab wrote; a different link wins.
+async function start() {
+  const params = new URLSearchParams(location.search);
+  const tab = loadTab(address());
+  const resume = tab && (!isLink(location.hash) || location.hash === tab.link);
+  let linked = null;
+  let problem = null;
+  if (!resume && isLink(location.hash)) {
+    try {
+      linked = await linkToPiece(location.hash);
+    } catch (e) {
+      if (!(e instanceof SpecError)) throw e;
+      problem = e.message;
+    }
   }
+  const embedded = readBlock("randaw-piece");  // null, or { name, spec }
+  const asked = examples.find((x) => x.name === params.get("example"));
+  const latest = linked || asked || embedded ? null : keptPieces()[0];
+
+  let opened = false;
+  if (resume && (opened = open(tab.spec, tab.name, tab))) {
+    if (!tab.kept && examples.some((x) => x.name === tab.name)) $("examples").value = tab.name;
+    else showOther(`${tab.kept ? "Last edited" : "Piece"}: ${tab.name}`);
+  }
+  if (!opened && linked) {
+    if ((opened = open(linked.spec, linked.name))) showOther(`Link: ${linked.name}`);
+    else problem = `The piece in that link could not be opened: ${$("message").textContent}`;
+  }
+  if (!opened && asked) {
+    $("examples").value = asked.name;
+    opened = open(asked.spec, asked.name);
+  }
+  if (!opened && embedded) {
+    showOther(`Piece: ${embedded.name}`);
+    // If it cannot be used, say why, over whatever opens instead.
+    if (!(opened = open(embedded.spec, embedded.name))) problem = $("message").textContent;
+  }
+  if (!opened && latest && (opened = open(latest.spec, latest.name, { id: latest.id, kept: true, seen: latest.saved }))) {
+    showOther(`Last edited: ${latest.name}`);
+  }
+  if (!opened) {
+    $("examples").value = examples[0].name;
+    open(examples[0].spec, examples[0].name);
+  }
+  showKept();
+  if (problem) say(problem, "error");
+
+  // ?t=3.2 shows a still frame at 3.2 seconds, without sound -- for linking to
+  // a moment, and for the automated checks, which have no speakers.
+  if (params.has("t") && state.made) {
+    const t = parseFloat(params.get("t"));
+    if (!Number.isNaN(t)) {
+      player.seek(t / state.made.piece.barDuration);
+      $("play").disabled = true;
+      $("hint").textContent = `Still frame at ${t.toFixed(2)} s — remove ?t= from the address to play`;
+      refresh();
+    }
+  }
+  document.documentElement.dataset.ready = "1";
 }
-document.documentElement.dataset.ready = "1";
+start().catch((e) => {
+  document.documentElement.dataset.error = String(e.message);
+  say(`Something went wrong: ${e.message}`, "error");
+});

@@ -27,7 +27,7 @@ whole page with your piece inside, which is the one file you can email to
 someone. The link is shorter still, and
 readable: the page's address always carries the piece being edited, as its
 name, three words and a short tail (tresillo is
-`#tresillo.navigate-jumble-dodge.93zBpVYcgWzT54V`), so sending or bookmarking the address
+`#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`), so sending or bookmarking the address
 shares or keeps the piece, with nothing stored anywhere. The page
 needs no internet connection and nothing installed; it works on an iPad as
 well as a laptop.
@@ -266,7 +266,7 @@ web/
     share.js         putting a piece into a copy of the page
     link.js          a piece in a link's #part, and back
     pack.js          the short packed form links use
-    words.js         the 7,590 words links are spelled with (EFF's long list)
+    words.js         the 6,510 words links are spelled with (from EFF's long list)
     draft.js         keeping pieces in the browser: this tab, and between visits
     files.js         saving a file from the page; base64 back to bytes
     fingerprint.js   a short hash of the audio, to compare devices

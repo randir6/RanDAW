@@ -30,11 +30,6 @@ test("link: every example comes back exactly, as name.three-words.tail", async (
   }
 });
 
-test("link: tresillo, the first example, fits in 47 characters", async () => {
-  const { name, spec } = examples.find((x) => x.name === "tresillo");
-  assert.ok((await pieceToLink(name, spec)).length <= 47);
-});
-
 const wordsOf = (link) => link.split(".")[1];
 
 test("link: the words are the skeleton -- the same while details change, different when the shape does", async () => {

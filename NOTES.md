@@ -230,10 +230,11 @@ Design notes from thinking it through, so the work does not start cold:
   14 in the examples are), melodies as a chord and a shape where they are
   one, and bars as "until it repeats" where they are. Nothing about the
   editor changed to allow it. The link is then `#name.three-words.tail`
-  (tresillo: `#tresillo.navigate-jumble-dodge.93zBpVYcgWzT54V`, 47 characters; the
-  examples 47-69). The name is readable and outside the checks, so editing
-  it renames the piece. The words (EFF's long list, 7,590 after taking out
-  hyphenated and grim ones) hold the first 32 bits -- the skeleton, written
+  (tresillo: `#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`, 55 characters; the
+  examples 47-66, varying with how long their words happen to be). The name
+  is readable and outside the checks, so editing it renames the piece. The
+  words (6,510 from EFF's long list, after passes for friendliness that
+  stop at the fewest words three can be and still hold 38 bits) hold the first 32 bits -- the skeleton, written
   first on purpose -- plus 6 bits checking just them, so they stay put
   while details change. The tail ends with two characters checking the
   whole piece (1 in 4,096 damaged links gets through; one character let a

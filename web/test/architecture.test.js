@@ -42,8 +42,7 @@ test("the engine imports only the engine", () => {
 
 test("the engine never touches the browser", () => {
   const browserOnly = /\b(document|window|navigator|localStorage|requestAnimationFrame|AudioContext)\b/;
-  // words.js is a list of plain words, "window" and "document" among them.
-  for (const file of ENGINE.filter((f) => f !== "words.js")) {
+  for (const file of ENGINE) {
     const found = code(file).match(browserOnly);
     assert.equal(found, null, `${file} uses ${found?.[0]}`);
   }

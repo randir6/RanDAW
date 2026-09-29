@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, setAllBeats, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setAllBeats, setBeats, setFollow, setOver, setPosition, setSequence, setSetting, toggleBeat,
+  toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { pieceToLink } from "../src/link.js";
@@ -60,7 +61,8 @@ async function fingerprint(page) {
   await page.waitFor("!document.documentElement.dataset.busy");
   return page.evaluate(FINGERPRINT);
 }
-const button = (card, text) => `.card:nth-of-type(${card + 1}) button[title^="${text}"]`;
+const card = (layer) => `.card[data-layer="${layer}"]`;
+const button = (layer, text) => `${card(layer)} button[title^="${text}"]`;
 
 test("editing: tapping a beat switches it off; undo and redo step through it", { skip }, () =>
   editing("tresillo", async (page) => {
@@ -117,8 +119,61 @@ test("editing: picking a position and a key sets it, and shows where it lands", 
     assert.ok(await page.evaluate("document.querySelectorAll('#stage .picked').length") >= 3,
       "the position is outlined everywhere it lands");
     assert.equal(await page.evaluate("document.querySelector('.keypad .label').textContent"), "Position 2");
-    await page.evaluate(`[...document.querySelectorAll(".keypad button")].find((b) => b.textContent === "3").click(), true`);
+    await click(page, '.keypad .key[data-value="3"]');
     assert.equal(await fingerprint(page), print(setPosition(spec, 0, 1, 3)));
+  }));
+
+test("editing: the keypad is a keyboard of the layer's scale, naming the notes", { skip }, () =>
+  editing("rests", async (page) => {
+    await click(page, ".card .tile", 0);  // the pluck (tuned to A) in dorian
+    const keys = await page.evaluate(`[...document.querySelectorAll(".keypad .key")].map((k) =>
+      [k.dataset.value ?? null, k.querySelector(".note").textContent, k.disabled, k.classList.contains("black")])`);
+    // A dorian is A B C D E F# G: the degrees are on those keys, and the
+    // rest of the octave is shown but cannot be chosen.
+    const chosen = keys.filter(([value]) => value !== null).map(([value, note]) => `${value}:${note}`);
+    assert.deepEqual(chosen, ["1:A3", "2:B3", "3:C4", "4:D4", "5:E4", "6:F♯4", "7:G4", "8:A4"]);
+    assert.ok(keys.filter(([value]) => value === null).every(([, , disabled]) => disabled));
+    assert.deepEqual(keys.find(([value]) => value === "6").slice(2), [false, true], "F# is a black key");
+    assert.equal(await page.evaluate("document.querySelector('.keypad .now').textContent"), "A3");
+    // The home chord is marked.
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll(".keypad .key.chord")].map((k) => k.dataset.value)`),
+      ["1", "3", "5", "8"]);
+  }));
+
+test("editing: a semitone layer's keypad is a chromatic keyboard", { skip }, () =>
+  editing("rests", async (page) => {
+    const spec = example("rests");
+    await click(page, `${card(3)} .tile`, 0);  // the hat: semitones
+    assert.equal(await page.evaluate("document.querySelectorAll('.keypad .key:disabled').length"), 0);
+    await click(page, '.keypad .key[data-value="7"]');
+    assert.equal(await fingerprint(page), print(setPosition(spec, 3, 0, 7)));
+    await click(page, ".keypad-row button[title='An octave up']");
+    assert.equal(await fingerprint(page), print(setPosition(spec, 3, 0, 19)));
+  }));
+
+test("editing: a melody can follow its hits, so switching a beat off keeps every note", { skip }, () =>
+  editing("rests", async (page) => {
+    const spec = example("rests");
+    const off = toggleBeat(spec, 0, 2);
+    await click(page, button(0, "Beat 2"));
+    assert.equal(await fingerprint(page), print(off));
+    await click(page, button(0, "Notes follow hits"));
+    assert.equal(await fingerprint(page), print(setFollow(off, 0, "hits")));
+    // 7 positions moving on 4 a bar take 7 bars to come round, as before.
+    assert.match(await page.evaluate("document.querySelector('.card .sequence-row .repeat').textContent"), /7 bars/);
+    // A sequence of one note sounds the same either way, so is not offered the choice.
+    assert.equal(await page.evaluate(`document.querySelector('${card(3)} .follow')`), null);
+  }));
+
+test("editing: a drum's pitch settings are folded away until asked for", { skip }, () =>
+  editing("rests", async (page) => {
+    const pitchMenus = () => page.evaluate(`document.querySelectorAll(".card .melody select").length`);
+    // The pluck and bell each have Pitch and Scale; the kick and hat, none.
+    assert.equal(await pitchMenus(), 4);
+    await click(page, `${card(2)} .unfold`);
+    assert.equal(await pitchMenus(), 5);
+    await click(page, `${card(2)} .unfold`);
+    assert.equal(await pitchMenus(), 4);
   }));
 
 test("editing: typing a sequence sets it; a mistake is explained and changes nothing", { skip }, () =>

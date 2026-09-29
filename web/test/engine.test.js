@@ -122,6 +122,36 @@ test("a switched-off beat silences its note rather than shifting the melody", ()
   assert.deepEqual(cells.map((c) => c.status), [STATUS_NOTE, STATUS_INACTIVE]);
 });
 
+test("a layer following its hits plays every note in turn, whatever beats are off", () => {
+  const spec = (follow) => ({ bars: 2, layer: [{ beats: 4, notes: [0, 12, 24], sample: "pluck.wav", active: [1, 2, 4], follow }] });
+  // Following beats, the 24 falls on switched-off beat 3 in the first bar,
+  // and on the 0 in the second: each time, that note is simply lost.
+  assert.deepEqual(schedule(piece(spec("beats"))).map((e) => e.semitones), [0, 12, 0, 12, 24, 12]);
+  // Following hits, the three notes run on over the three hits of each bar.
+  assert.deepEqual(schedule(piece(spec("hits"))).map((e) => e.semitones), [0, 12, 24, 0, 12, 24]);
+  // A switched-off beat shows the note it would play if switched back on:
+  // the next one due.
+  const off = grid(piece(spec("hits"))).filter((c) => c.status === STATUS_INACTIVE);
+  assert.deepEqual(off.map((c) => [c.bar, c.position, c.semitones]), [[0, 2, 24], [1, 2, 24]]);
+});
+
+test("a rest still takes its turn when a layer follows its hits", () => {
+  const spec = { bars: 1, layer: [{ beats: 4, notes: [0, "-", 7], sample: "pluck.wav", active: [1, 3, 4], follow: "hits" }] };
+  const cells = grid(piece(spec));
+  assert.deepEqual(cells.map((c) => c.status), [STATUS_NOTE, STATUS_INACTIVE, STATUS_REST, STATUS_NOTE]);
+  assert.deepEqual(cells.map((c) => c.position), [0, 1, 1, 2]);
+});
+
+test("with every beat on, following hits sounds exactly like following beats", () => {
+  const spec = JSON.parse(readFileSync(join(WEB, "examples", "scales.json"), "utf8"));
+  const hits = { ...spec, layer: spec.layer.map((l) => (l.active ? l : { ...l, follow: "hits" })) };
+  assert.equal(fingerprint(renderWav(hits).wav), fingerprint(renderWav(spec).wav));
+});
+
+test("follow must be beats or hits", () => {
+  refused({ bars: 1, layer: [{ beats: 4, notes: [0], sample: "kick.wav", follow: "notes" }] }, 'follow must be "beats" or "hits"');
+});
+
 // --- Layers over more than one bar ---------------------------------------------------
 
 test("a layer over 2 bars spreads its beats evenly across both", () => {
@@ -300,6 +330,16 @@ test("each layer, and the whole piece, knows how many bars until it repeats", ()
   const over2 = (seq) => pieceToDerived(piece({ bars: 1, layer: [{ beats: 7, over: 2, notes: seq, sample: "kick.wav" }] }));
   assert.equal(over2([0, 0, 0, 0, 0, 0, 0]).repeat_bars, 2);
   assert.equal(over2([0, 0, 0, 0, 0]).repeat_bars, 10);
+  // Following hits, the sequence moves on only as many positions a span as
+  // beats sound: 6 positions on 4 beats is 3 bars; with 3 of the 4 on, 2.
+  const hits = (follow, active) => pieceToDerived(piece({
+    bars: 1, layer: [{ beats: 4, notes: [0, 1, 2, 3, 4, 5], sample: "pluck.wav", active, follow }],
+  })).repeat_bars;
+  assert.equal(hits("beats", [1, 2, 3]), 3);
+  assert.equal(hits("hits", [1, 2, 3]), 2);
+  assert.equal(hits("hits", [1, 2, 3, 4]), 3);
+  // With no beat on at all, nothing moves: the pattern is one span long.
+  assert.equal(hits("hits", []), 1);
 });
 
 // --- Mute and solo -------------------------------------------------------------------

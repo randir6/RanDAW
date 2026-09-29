@@ -60,6 +60,7 @@ function randomEdit(spec, rand) {
     () => edit.setLayer(spec, i, "gain", Math.round(rand() * 150) / 100),
     () => edit.setLayer(spec, i, "scale", pick([null, ...SCALE_NAMES])),
     () => edit.switchPitchKind(spec, i, pick(["notes", "degrees"])),
+    () => edit.setFollow(spec, i, pick(["beats", "hits"])),
     () => edit.toggleMute(spec, i),
     () => edit.toggleSolo(spec, i),
     () => (spec.layer.length < 5 ? edit.addLayer(spec, SAMPLES) : spec),

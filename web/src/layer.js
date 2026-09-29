@@ -21,6 +21,12 @@ export const REST = "-";
 // trace for free, and `instanceof LayerError` can pick it out.
 export class LayerError extends Error {}
 
+// What a layer's sequence can follow. "beats": one position per beat, so a
+// switched-off beat silences the note that falls on it. "hits": one position
+// per beat that SOUNDS, so every note is heard in turn and switching beats off
+// changes the rhythm of the melody without cutting notes out of it.
+export const FOLLOWS = Object.freeze(["beats", "hits"]);
+
 // Validate the parts of a layer and build one.
 //
 // The argument is a single object with named parts -- makeLayer({ beats: 3,
@@ -50,6 +56,7 @@ export function makeLayer({
   active = null,
   mute = false,
   solo = false,
+  follow = "beats",
 }) {
   if (beats < 1) throw new LayerError(`beat count must be >= 1, got ${beats}`);
   // `over` is how many bars the layer's beats are spread across: 7 beats
@@ -94,6 +101,12 @@ export function makeLayer({
   if (gain < 0) throw new LayerError(`gain must be >= 0, got ${gain}`);
   if (!sample) throw new LayerError("no sample");
 
+  // Which beats move the sequence on: every beat ("beats", the default), or
+  // only the ones that sound ("hits"). See walk() in schedule.js.
+  if (!FOLLOWS.includes(follow)) {
+    throw new LayerError(`follow must be ${FOLLOWS.map((f) => `"${f}"`).join(" or ")}, got ${JSON.stringify(follow)}`);
+  }
+
   let activeBeats = null;
   if (active !== null) {
     for (const n of active) {
@@ -127,5 +140,6 @@ export function makeLayer({
     // is worked out by buildPiece, not here.
     mute,
     solo,
+    follow,
   });
 }

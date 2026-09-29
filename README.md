@@ -91,18 +91,33 @@ so the groove never stops.
   the whole pattern takes to repeat, and offers to set the length to a whole
   number of repeats, so the WAV loops on the pattern rather than restarting
   it part-way.
-- **Under it**, one card per layer: **M**ute, **S**olo, sample, **Beats**
-  and **over** how many bars they spread, semitones or scale degrees, scale,
-  root, gain, ⧉ to duplicate the layer and ✕ to remove it. An **On** row has
-  a button per beat — the same as tapping beats in the drawing, but easy to
-  hit on a phone.
+- **Under it**, one card per layer. Along the top: **M**ute, **S**olo,
+  sample, gain, ⧉ to duplicate the layer and ✕ to remove it. Then two
+  parts:
+  - **Rhythm** — **Beats** and **over** how many bars they spread, and an
+    **On** row with a button per beat (the same as tapping beats in the
+    drawing, but easy to hit on a phone). Beside it, **Notes follow beats |
+    hits**: whether a switched-off beat cuts its note out of the melody
+    (beats) or holds the melody back so every note is still heard (hits).
+    Only offered when the sequence has more than one value in it.
+  - **Melody** — semitones or scale degrees, scale and root, and the
+    Sequence row. A drum layer (every position 0) is headed **Hits**, and
+    its pitch settings fold away behind one button until wanted.
 - **The Sequence row** shows the layer's notes and rests, one tile per
   position. Tap a tile to choose it — every place that position lands
   lights up in the drawing, which is the clearest way to see a sequence
-  phase against its beats — then tap a key to change it, or **rest**. **+**
-  and **−** make the sequence longer or shorter. The text box beside it
-  holds the same sequence for typing or pasting. Beside it: how many bars
-  until this layer repeats.
+  phase against its beats — then choose a key on the keyboard that opens
+  under it, or **rest**. **+** and **−** make the sequence longer or
+  shorter. The text box beside it holds the same sequence for typing or
+  pasting. Beside it: how many bars until this layer repeats.
+- **The keyboard** is one octave of piano. For scale degrees it runs from
+  degree 1 to the 1 above; keys in the scale carry their degree, the rest
+  are greyed so you can see the scale's shape, and in a seven-note scale
+  1, 3 and 5 (the home chord) are underlined. For semitones every key can
+  be pressed. **▼ oct / ▲ oct** move the note an octave. The built-in
+  melodic sounds were made at known pitches (pluck, keys and marimba on A,
+  bell on E, tom on A), so for those each key names its note — A3, F♯4 —
+  as does the position being edited.
 - **Undo / Redo**, also ⌘Z / Ctrl+Z. **Escape** puts the position keypad away.
 - **A mix that clips** (too loud, so it distorts) says so, with a button to
   turn every layer down by the same amount, just enough to fit.
@@ -141,6 +156,7 @@ all use, and they mean exactly this. In the order they build on each other:
 | **Beat** | One of a layer's divisions of its span of bars. Every layer has its own beats. | `"beats": 7` |
 | **Over** | How many bars a layer's beats are spread across: "7 beats over 2 bars". | `"over": 2` (1 if left out) |
 | **Sequence** | A layer's notes and rests, read one **position** per beat. | `"notes"` or `"degrees"` |
+| **Follow** | Whether a layer's sequence moves on at every beat, or only at the beats that sound. | `"follow": "hits"` (`"beats"` if left out) |
 | **Repeats every N bars** | When a layer's pattern — or the whole piece's — comes back round to where it started. | |
 | **Length** | The whole file, in bars. | `"bars": 8` |
 | **Click** | The base beats made audible, higher on beat 1 of each bar. Off unless turned on. | `"click": true` |
@@ -193,8 +209,20 @@ Fixed: an inactive beat is silent on the same beat *every* time round. That
 is the difference from a rest, and it is the distinction worth keeping
 straight.
 
+**Follow** — what a switched-off beat does to the sequence. Following
+**beats** (the default), every beat moves the sequence on, so the note that
+would have fallen on a switched-off beat is simply not heard: right for a
+drum pattern. Following **hits**, only the beats that sound move it on, so
+every note is heard in turn and switching beats off changes the rhythm of
+the melody, not its notes: usually right for a melody. The two differ only
+when some beat is switched off. A rest still takes its turn either way,
+because it belongs to the melody. Switching a layer to scale degrees in the
+page sets it to follow hits (unless it already said); a saved piece without
+`follow` follows beats, as every piece did before.
+
 **Layer** — a beat count (over some bars), a sequence, one sample, a gain,
-and optionally which of its own beats sound.
+and optionally which of its own beats sound and whether its sequence
+follows beats or hits.
 
 **Note** — a pitch written as a semitone offset. `0` is unison, `12` an octave
 up. Right for drums, where a scale means nothing.
@@ -330,7 +358,7 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 **Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
 is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
-(not merged, no pull request). All 107 checks pass.
+(not merged, no pull request). All 116 checks pass.
 
 ### What works
 

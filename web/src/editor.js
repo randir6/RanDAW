@@ -10,9 +10,9 @@
 // result is valid, records it for undo, and plays it.
 
 import {
-  addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE, MAX_BEATS,
-  MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setBeats, setLayer,
-  setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, effectiveScale, formatSequence, insertPosition, MAX_BARS, MAX_BASE,
+  maxBeats, MAX_OVER, MAX_TEMPO, MIN_TEMPO, parseSequence, removeLayer, removePosition, sequenceKey, setAllBeats,
+  setBeats, setLayer, setOver, setPosition, setSequence, setSetting, switchPitchKind, toggleBeat, toggleMute, toggleSolo,
 } from "./edit.js";
 import { REST } from "./layer.js";
 import { SCALES } from "./scales.js";
@@ -62,11 +62,24 @@ function focusAt(root, path) {
 }
 
 // A number with − and + buttons either side, and optionally a unit after.
+// The number is a box that can be typed in too, to jump straight to 100
+// rather than click there. What is typed is rounded to a whole number and
+// kept within min and max; a refused change puts the box back.
 function stepper(label, value, onChange, { min = -Infinity, max = Infinity, unit = null } = {}) {
   return h("span", { class: "stepper" },
     h("span", { class: "label" }, label),
     h("button", { type: "button", "aria-label": `${label} down`, disabled: value <= min, onclick: () => onChange(value - 1) }, "−"),
-    h("span", { class: "value" }, String(value)),
+    h("input", {
+      type: "number", class: "value", step: "1", value: String(value), inputmode: "numeric",
+      min: Number.isFinite(min) ? String(min) : null, max: Number.isFinite(max) ? String(max) : null,
+      "aria-label": label,
+      onchange: (e) => {
+        const typed = e.target.value.trim() === "" ? NaN : Number(e.target.value);
+        const n = Math.min(max, Math.max(min, Math.round(typed)));
+        if (!Number.isFinite(n) || n === value || onChange(n) === false) e.target.value = String(value);
+      },
+      onkeydown: (e) => { if (e.key === "Enter") e.target.blur(); },
+    }),
     h("button", { type: "button", "aria-label": `${label} up`, disabled: value >= max, onclick: () => onChange(value + 1) }, "+"),
     unit && h("span", { class: "unit" }, unit),
   );
@@ -210,7 +223,7 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
         }, "S")),
       menu("Sample", layer.sample, samples.map((n) => [n, n.replace(/\.wav$/i, "")]),
         (v) => edit((s) => setLayer(s, i, "sample", v))),
-      stepper("Beats", layer.beats, (n) => edit((s) => setBeats(s, i, n)), { min: 1, max: MAX_BEATS }),
+      stepper("Beats", layer.beats, (n) => edit((s) => setBeats(s, i, n)), { min: 1, max: maxBeats(info.over) }),
       stepper("over", info.over, (n) => edit((s) => setOver(s, i, n)),
         { min: 1, max: MAX_OVER, unit: info.over === 1 ? "bar" : "bars" }),
       menu("Pitch", key, [["notes", "semitones"], ["degrees", "scale degrees"]],
@@ -280,8 +293,19 @@ export function renderEditor({ container, spec, derived, samples, selected, hist
     // beats in the drawing, but big enough to hit on a phone however many
     // beats there are, and usable from a keyboard or a screen reader.
     const on = new Set(info.active ?? Array.from({ length: layer.beats }, (_, b) => b + 1));
+    // With more than a handful of beats, switching them one at a time is a
+    // chore, so there are buttons to switch them all on or all off.
+    const many = layer.beats > 10;
     const beatRow = h("div", { class: "beats-on", role: "group", "aria-label": `Beats of layer ${i + 1} that sound` },
       h("span", { class: "label" }, "On"),
+      many && h("button", {
+        type: "button", class: "all-beats", disabled: on.size === layer.beats,
+        title: "Switch every beat on", onclick: () => edit((s) => setAllBeats(s, i, true)),
+      }, "All beats"),
+      many && h("button", {
+        type: "button", class: "all-beats", disabled: on.size === 0,
+        title: "Switch every beat off", onclick: () => edit((s) => setAllBeats(s, i, false)),
+      }, "No beats"),
       Array.from({ length: layer.beats }, (_, b) => b + 1).map((beat) =>
         h("button", {
           type: "button", class: "beat", "aria-pressed": String(on.has(beat)),

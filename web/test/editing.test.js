@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setAllBeats, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { planSwap } from "../src/player.js";
@@ -363,6 +363,31 @@ test("editing: Escape puts the position keypad away", { skip }, () =>
     assert.equal(await page.evaluate("document.querySelectorAll('.keypad').length"), 0);
   }));
 
+test("editing: with more than ten beats, all of a layer's beats switch on or off at once", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const count = () => page.evaluate("document.querySelector('.card').querySelectorAll('.all-beats').length");
+    let spec = example("tresillo");
+    assert.equal(await count(), 0, "not for 8 beats");
+
+    await page.evaluate(`{
+      const box = document.querySelector(".card input[aria-label='Beats']");
+      box.value = "12";
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    spec = setBeats(spec, 0, 12);
+    assert.equal(await count(), 2);
+
+    await click(page, ".card .all-beats", 1);  // No beats
+    spec = setAllBeats(spec, 0, false);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=true]').length"), 0);
+
+    await click(page, ".card .all-beats", 0);  // All beats
+    spec = setAllBeats(spec, 0, true);
+    assert.equal(await fingerprint(page), print(spec));
+    assert.equal(await page.evaluate("document.querySelector('.card').querySelectorAll('.beat[aria-pressed=false]').length"), 0);
+  }));
+
 test("editing: keyboard focus stays on the control just used", { skip }, () =>
   editing("tresillo", async (page) => {
     // Focus the first card's "Beats up" and press it three times, as a
@@ -377,7 +402,47 @@ test("editing: keyboard focus stays on the control just used", { skip }, () =>
         true }`);
     }
     assert.equal(await page.evaluate("document.activeElement.getAttribute('aria-label')"), "Beats up");
-    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').textContent"), "11");
+    assert.equal(await page.evaluate("document.querySelector('.card .stepper .value').value"), "11");
+  }));
+
+test("editing: a stepper's number can be typed in, kept whole and within its limits", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const type = (selector, text) => page.evaluate(`{
+      const box = document.querySelector(${JSON.stringify(selector)});
+      box.value = ${JSON.stringify(text)};
+      box.dispatchEvent(new Event("change"));
+      true }`);
+    const value = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
+    let spec = example("tresillo");
+
+    await type(".card input[aria-label='Beats']", "20");
+    spec = setBeats(spec, 0, 20);
+    assert.equal(await fingerprint(page), print(spec));
+
+    await type(".piece-controls input[aria-label='Bars']", "12");
+    spec = setSetting(spec, "bars", 12);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Too many is brought down to the most allowed; a fraction is rounded.
+    await type(".card input[aria-label='Beats']", "1000");
+    assert.equal(await value(".card input[aria-label='Beats']"), "32");
+    await type(".card input[aria-label='Beats']", "6.6");
+    spec = setBeats(spec, 0, 7);
+    assert.equal(await fingerprint(page), print(spec));
+
+    // Nothing, or not a number, leaves things as they were.
+    await type(".card input[aria-label='Beats']", "");
+    assert.equal(await value(".card input[aria-label='Beats']"), "7");
+    assert.equal(await fingerprint(page), print(spec));
+
+    // 32 beats a bar: spread over 10 bars, a layer can have 320.
+    await type(".card input[aria-label='over']", "10");
+    spec = setOver(spec, 0, 10);
+    assert.equal(await fingerprint(page), print(spec));
+    await type(".card input[aria-label='Beats']", "320");
+    spec = setBeats(spec, 0, 320);
+    assert.equal(await value(".card input[aria-label='Beats']"), "320");
+    assert.equal(await fingerprint(page), print(spec));
   }));
 
 test("editing: a refusal straight after an edit is not wiped by that edit's sound", { skip }, () =>

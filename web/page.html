@@ -224,6 +224,9 @@
   .stepper { display: inline-flex; align-items: center; gap: 4px; }
   .stepper button { min-width: 36px; padding: 6px 8px; }
   .value { font-variant-numeric: tabular-nums; min-width: 2.4em; text-align: center; }
+  /* A stepper's number can be typed in; its own − and + do the stepping. */
+  input.value { width: 4em; min-width: 0; padding: 6px 4px; -moz-appearance: textfield; appearance: textfield; }
+  input.value::-webkit-inner-spin-button, input.value::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type="number"], input[type="text"] {
     font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--bar); border-radius: 8px; padding: 6px 8px; min-height: 36px;
@@ -268,6 +271,8 @@
     min-width: 34px; min-height: 34px; padding: 4px 6px; font-size: 13px;
     font-variant-numeric: tabular-nums;
   }
+  .all-beats { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+  .all-beats + .beat { margin-left: 8px; }
   .beat[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 30%, var(--surface)); font-weight: 650; }
   .beat[aria-pressed="false"] {
     color: var(--ink-2);

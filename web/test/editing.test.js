@@ -36,8 +36,11 @@ const print = (spec) => fnv1a(renderWav(spec).wav);
 const FINGERPRINT = "document.documentElement.dataset.audioFingerprint";
 
 // Open the page on an example, with no piece left over from another check.
+// The grid is asked for by name: the drawing last chosen is remembered, so a
+// check that fails while in rings or polygons would otherwise leave every
+// check after it looking at the wrong drawing, and failing for no reason.
 async function editing(name, check) {
-  const page = await browser.open(`${PAGE}?example=${name}`);
+  const page = await browser.open(`${PAGE}?example=${name}&view=grid`);
   try {
     await page.evaluate("localStorage.clear(), true");
     return await check(page);
@@ -253,7 +256,6 @@ test("editing: in polygons, tapping an empty corner switches that beat on", { sk
     assert.equal(await fingerprint(page), print(toggleBeat(example("tresillo"), 0, 2)));
     // Now sounding, it has a mark instead of an empty corner.
     assert.equal(await page.evaluate(`document.querySelectorAll('.poly-off[data-layer="0"][data-beat="2"]').length`), 0);
-    await page.evaluate("document.getElementById('mode-grid').click(), true");
   }));
 
 test("editing: the piece survives a reload", { skip }, () =>

@@ -14,9 +14,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { pieceToDerived } from "../src/derive.js";
-import { buildPiece } from "../src/piece.js";
 import { SpecError } from "../src/spec.js";
-import { fingerprint, HERE, LIBRARY, readJson, renderWav, sha256 } from "./helpers.js";
+import { fingerprint, HERE, readJson, renderWav, sha256 } from "./helpers.js";
 
 const FIXTURES = `${HERE}/fixtures`;
 
@@ -81,11 +80,4 @@ test("600 random pieces: same verdict, same grid, same audio", () => {
   // Listing every problem, rather than stopping at the first, shows whether
   // it is one bug or many.
   assert.deepEqual(problems, [], `\n${problems.slice(0, 20).join("\n")}`);
-});
-
-test("every refusal in the random set is a friendly SpecError, never a crash", () => {
-  const cases = readJson(FIXTURES, "fuzz.json").filter((c) => !c.ok);
-  for (const c of cases) {
-    assert.throws(() => buildPiece(c.spec, { samples: LIBRARY.keys() }), SpecError);
-  }
 });

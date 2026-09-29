@@ -24,10 +24,11 @@ notes, rests and switched-off beats, and where they fall against each other.
 From the page you can **Download WAV**, **Save piece** (a small `.json` file
 that **Open…** reads back), **Share link**, or **Save page**: a copy of the
 whole page with your piece inside, which is the one file you can email to
-someone. The link is shorter still: the page's address always carries the
-piece being edited, packed into a couple of dozen characters after the `#`
-(tresillo is `#p_rV3zB7SqwncgRy2afIO`), so sending or bookmarking the
-address shares or keeps the piece, with nothing stored anywhere. The page
+someone. The link is shorter still, and
+readable: the page's address always carries the piece being edited, as its
+name, three words and a short tail (tresillo is
+`#tresillo.navigate-jumble-dodge.93zBpVYcgWzT54V`), so sending or bookmarking the address
+shares or keeps the piece, with nothing stored anywhere. The page
 needs no internet connection and nothing installed; it works on an iPad as
 well as a laptop.
 
@@ -116,11 +117,15 @@ so the groove never stops.
   clear it (Safari does after some weeks unused, unless the page is on the
   Home Screen): **Save piece**, **Save page** or a link to keep something.
 - **Share link**, and the address bar itself, hold the piece exactly as it
-  is. A typical piece takes 20-40 characters: the link builds in what pieces
-  usually are (tempo 120, a kick on note 0, hits spread evenly round the
-  beats, a melody that runs up and down a chord) and spells out only what
-  differs. A link cut short on its way is refused, not opened as some other
-  piece. How it works: `web/src/pack.js`.
+  is: `#name.three-words.tail`, about 45-70 characters. The name reads as it
+  is (edit it in the address to rename the piece). The words hold the
+  piece's skeleton -- tempo, base, its layers' samples and beats -- so two
+  versions of a groove that differ only in melody, gains or which beats
+  sound share their words. The tail holds the rest. Links build in what
+  pieces usually are (tempo 120, a kick on note 0, hits spread evenly round
+  the beats, a melody that runs up and down a chord) and spell out only what
+  differs. A link cut short or mistyped is refused, not opened as some other
+  piece. How it works: `web/src/link.js` and `web/src/pack.js`.
 
 ## Glossary
 
@@ -261,6 +266,7 @@ web/
     share.js         putting a piece into a copy of the page
     link.js          a piece in a link's #part, and back
     pack.js          the short packed form links use
+    words.js         the 7,590 words links are spelled with (EFF's long list)
     draft.js         keeping pieces in the browser: this tab, and between visits
     files.js         saving a file from the page; base64 back to bytes
     fingerprint.js   a short hash of the audio, to compare devices

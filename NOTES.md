@@ -222,20 +222,29 @@ Design notes from thinking it through, so the work does not start cold:
 
 ## Decisions worth remembering
 
-- **Links carry the piece; the packed form is frozen.** The address after
-  `#` holds the piece (`link.js`), so sharing needs no server. Plain JSON
-  squeezed with deflate came to 200-280 characters; `pack.js` gets the
-  examples to 22-41 (tresillo 22) by writing values as places in lists of
-  likely ones, beat patterns as even spreads (13 of the 14 in the examples
-  are), melodies as a chord and a shape where they are one, bars as "until
-  it repeats" where they are, and an example's name as its number. Nothing
-  about the editor changed to allow it. Every link is checked by unpacking
-  it before it is used; a piece the packed form cannot give back exactly
-  gets the deflate form instead. Its lists are part of the format: changing
-  one means a new format letter, keeping the old for links already made.
+- **Links carry the piece: name, three words, tail; all of it frozen.** The
+  address after `#` holds the piece (`link.js`), so sharing needs no
+  server. Plain JSON squeezed with deflate came to 200-280 characters.
+  `pack.js` gets a piece into roughly 60-200 bits by writing values as
+  places in lists of likely ones, beat patterns as even spreads (13 of the
+  14 in the examples are), melodies as a chord and a shape where they are
+  one, and bars as "until it repeats" where they are. Nothing about the
+  editor changed to allow it. The link is then `#name.three-words.tail`
+  (tresillo: `#tresillo.navigate-jumble-dodge.93zBpVYcgWzT54V`, 47 characters; the
+  examples 47-69). The name is readable and outside the checks, so editing
+  it renames the piece. The words (EFF's long list, 7,590 after taking out
+  hyphenated and grim ones) hold the first 32 bits -- the skeleton, written
+  first on purpose -- plus 6 bits checking just them, so they stay put
+  while details change. The tail ends with two characters checking the
+  whole piece (1 in 4,096 damaged links gets through; one character let a
+  cut-short link open a different piece in the checks). Words are less
+  dense than base64 (about 1.7 bits a character against 6), so the words
+  cost length; they are there to be read, said and recognised. Every link
+  is unpacked and compared before use; a piece the packed form cannot give
+  back exactly gets the deflate form (`#z`) instead. The lists in `pack.js`
+  and `words.js` are the format: changing one means a new kind of link.
   Fewer than 20 characters for every piece is impossible without storing
-  pieces somewhere (there are more pieces than short strings); a custom name
-  is the largest single cost, about one character per letter.
+  pieces somewhere (there are more pieces than short strings).
 
 - **Keeping work in the browser is two layers, and never a save.** Since the
   page is hosted, reloads and new visits are the normal way back to it, so

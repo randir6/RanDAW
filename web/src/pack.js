@@ -19,12 +19,19 @@
 //    chord, the shape and the starting note. Anything else is written
 //    note by note, as steps from the note before.
 // 3. Nothing the reader can work out. Bars, when they are exactly as long
-//    as the whole pattern takes to repeat, cost one bit; the name of an
-//    example costs a few.
+//    as the whole pattern takes to repeat, cost one bit.
+//
+// The piece's skeleton comes first -- tempo, base, how many layers, and
+// each layer's sample and beats -- then the detail: scale, melodies, gains,
+// which beats sound, bars. link.js writes the first bits as three words, so
+// the words hold the skeleton: tweak a melody or a gain and they stay the
+// same; change the groove's shape and they change.
+//
+// The name is not in here: link.js writes it in the link as it is.
 //
 // The lists below are part of the format: a link made today must open the
 // same piece for ever, so they are FROZEN. Changing any of them means a new
-// format letter in link.js, with this one kept for the links already made.
+// kind of link in link.js, with this one kept for the links already made.
 //
 // pack() refuses (throws Unpackable) anything outside what this format
 // covers, and link.js then uses its plain format instead, so no piece is
@@ -32,13 +39,11 @@
 
 export class Unpackable extends Error {}
 
-// --- The frozen lists (format "p") ------------------------------------------------
+// --- The frozen lists -------------------------------------------------------------
 
 const ABSENT = Symbol("absent");
 const REST = "-";
 
-// The examples' names, so a piece still called after one costs a few bits.
-const EXAMPLE_NAMES = ["tresillo", "rests", "seven", "spans", "phase_study", "sparse_dub", "scales"];
 // The built-in samples, most used first.
 const SAMPLES = ["kick.wav", "hat.wav", "snare.wav", "pluck.wav", "bell.wav", "tom.wav", "keys.wav",
   "marimba.wav", "click.wav"];
@@ -62,18 +67,12 @@ const SHAPES = [
   (c) => [...c, ...[...c].reverse().slice(1, -1)],  // up and back, not repeating either end
   (c) => [...c, ...[...c].reverse().slice(1)],      // up and back to where it started
 ];
-// Characters a name can use cheaply (six bits each); any other name is
-// written as UTF-8 bytes.
-const NAME_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789 -_ABCDEFGHIJKLMNOPQRSTUVWXYZ.";
 // The characters of a number written out in full, four bits each.
 const NUMBER_CHARS = "0123456789.-e+";
 
 // --- Bits ---------------------------------------------------------------------------
 
-const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-// A list of bits, written a value at a time, and turned into base64url
-// characters (six bits each) at the end.
+// A list of bits (0s and 1s), written a value at a time.
 class Writer {
   bits = [];
   bit(b) {
@@ -106,31 +105,17 @@ class Writer {
     this.eg(list.length);
     other(value);
   }
-  text() {
-    let out = "";
-    for (let i = 0; i < this.bits.length; i += 6) {
-      let v = 0;
-      for (let j = 0; j < 6; j++) v = v * 2 + (this.bits[i + j] ?? 0);
-      out += B64[v];
-    }
-    // Reading past the end gives zeros, so trailing all-zero characters can go.
-    return out.replace(/A+$/, "");
-  }
 }
 
+// Reads the bits back. Past the end reads as zeros, so a link can leave
+// trailing zeros out.
 class Reader {
-  constructor(text) {
-    this.bits = [];
-    for (const c of text) {
-      const v = B64.indexOf(c);
-      if (v < 0) throw new Unpackable(`not a link character: ${c}`);
-      for (let j = 5; j >= 0; j--) this.bits.push((v >> j) & 1);
-    }
+  constructor(bits) {
+    this.bits = bits;
     this.at = 0;
   }
   bit() {
-    // Past the end reads as zeros (see Writer.text), but not for ever: a
-    // mangled link must fail, not loop.
+    // Zeros past the end, but not for ever: a mangled link must fail, not loop.
     if (this.at > this.bits.length + 64) throw new Unpackable("the link ends too soon");
     return this.bits[this.at++] ?? 0;
   }
@@ -185,36 +170,6 @@ function readNumber(r) {
   const n = Number(text);
   if (text === "" || !Number.isFinite(n)) throw new Unpackable("the link is not a piece");
   return n;
-}
-
-function writeName(w, name) {
-  w.pick(name, EXAMPLE_NAMES, () => {
-    const simple = [...name].every((c) => NAME_CHARS.includes(c));
-    w.bit(simple);
-    if (simple) {
-      w.eg(name.length, 2);
-      for (const c of name) w.uint(NAME_CHARS.indexOf(c), 6);
-    } else {
-      const bytes = new TextEncoder().encode(name);
-      w.eg(bytes.length, 3);
-      for (const b of bytes) w.uint(b, 8);
-    }
-  });
-}
-function readName(r) {
-  return r.pick(EXAMPLE_NAMES, () => {
-    if (r.bit()) {
-      const length = r.eg(2);
-      if (length > 200) throw new Unpackable("the link is not a piece");
-      let name = "";
-      for (let i = 0; i < length; i++) name += NAME_CHARS[r.uint(6)] ?? "";
-      return name;
-    }
-    const length = r.eg(3);
-    if (length > 800) throw new Unpackable("the link is not a piece");
-    const bytes = Uint8Array.from({ length }, () => r.uint(8));
-    return new TextDecoder().decode(bytes);
-  });
 }
 
 // The positions (from 1) of k hits spread as evenly as possible over n
@@ -366,23 +321,18 @@ function repeatBars(layers) {
 
 // --- The piece ----------------------------------------------------------------------
 
-// The piece { name, spec } as base64url text. Throws Unpackable for a piece
-// this format does not cover.
-export function pack(name, spec) {
+// The piece's spec as a list of bits, skeleton first. Throws Unpackable for
+// a piece this format does not cover.
+export function pack(spec) {
   const w = new Writer();
-  if (typeof name !== "string") throw new Unpackable("no name");
   for (const key of Object.keys(spec)) if (!TOP_KEYS.includes(key)) throw new Unpackable(`key ${key}`);
   const { tempo, base, bars, layer } = spec;
   if (tempo === undefined || base === undefined || bars === undefined || !Array.isArray(layer) || !layer.length) {
     throw new Unpackable("missing tempo, base, bars or layers");
   }
-  writeName(w, name);
+  // The skeleton.
   w.pick(tempo, TEMPOS, (t) => writeNumber(w, t));
   w.pick(base, BASES, (b) => w.eg(b));
-  w.pick(valueOr(spec, "click"), FLAGS);
-  w.pick(valueOr(spec, "sample_rate"), [ABSENT, 44100, 48000], (n) => w.eg(n));
-  w.pick(valueOr(spec, "scale"), [ABSENT, ...SCALE_NAMES]);
-  w.pick(valueOr(spec, "root"), [ABSENT, 0], (n) => w.signed(n));
   w.eg(layer.length - 1, 1);
   let previous;
   for (const l of layer) {
@@ -392,6 +342,13 @@ export function pack(name, spec) {
     w.pick(l.beats, likelyBeats(previous, base), (b) => w.eg(b));
     previous = l.beats;
     w.pick(valueOr(l, "over"), [ABSENT, 2, 3, 4], (o) => w.eg(o));
+  }
+  // The detail.
+  w.pick(valueOr(spec, "click"), FLAGS);
+  w.pick(valueOr(spec, "sample_rate"), [ABSENT, 44100, 48000], (n) => w.eg(n));
+  w.pick(valueOr(spec, "scale"), [ABSENT, ...SCALE_NAMES]);
+  w.pick(valueOr(spec, "root"), [ABSENT, 0], (n) => w.signed(n));
+  for (const l of layer) {
     const degrees = Object.hasOwn(l, "degrees");
     w.bit(degrees);
     writeSequence(w, degrees ? l.degrees : l.notes, degrees ? DEGREE_CHORDS : NOTE_CHORDS, degrees ? 1 : 0);
@@ -408,36 +365,39 @@ export function pack(name, spec) {
     }
   }
   w.pick(bars, unique([repeatBars(layer), 8, 4, 16, 2, 1, 6, 12, 32]), (b) => w.eg(b));
-  return w.text();
+  return w.bits;
 }
 
-// The { name, spec } packed into this text. Throws Unpackable if it is not
-// one (cut short, mangled); what comes back is still to be checked as a
-// piece like any other.
-export function unpack(text) {
-  const r = new Reader(text);
-  const name = readName(r);
+// The spec packed into these bits. Throws Unpackable if they are not one
+// (cut short, mangled); what comes back is still to be checked as a piece
+// like any other.
+export function unpack(bits) {
+  const r = new Reader(bits);
   const tempo = r.pick(TEMPOS, () => readNumber(r));
   const base = r.pick(BASES, () => r.eg());
+  const count = r.eg(1) + 1;
+  if (count > 64) throw new Unpackable("the link is not a piece");
+  const skeleton = [];
+  for (let i = 0; i < count; i++) {
+    const sample = r.pick(SAMPLES);
+    const beats = r.pick(likelyBeats(skeleton.at(-1)?.beats, base), () => r.eg());
+    const over = r.pick([ABSENT, 2, 3, 4], () => r.eg());
+    skeleton.push({ sample, beats, over });
+  }
   const click = r.pick(FLAGS);
   const sampleRate = r.pick([ABSENT, 44100, 48000], () => r.eg());
   const scale = r.pick([ABSENT, ...SCALE_NAMES]);
   const root = r.pick([ABSENT, 0], () => r.signed());
-  const count = r.eg(1) + 1;
-  if (count > 64) throw new Unpackable("the link is not a piece");
-  const layer = [];
-  for (let i = 0; i < count; i++) {
-    const l = {};
-    const sample = r.pick(SAMPLES);
-    l.beats = r.pick(likelyBeats(layer.at(-1)?.beats, base), () => r.eg());
-    const over = r.pick([ABSENT, 2, 3, 4], () => r.eg());
+  const layer = skeleton.map(({ sample, beats, over }) => {
+    // In the order a saved piece lists them.
+    const l = { beats };
     if (over !== ABSENT) l.over = over;
     const degrees = r.bit();
     l[degrees ? "degrees" : "notes"] = readSequence(r, degrees ? DEGREE_CHORDS : NOTE_CHORDS, degrees ? 1 : 0);
     l.sample = sample;
     const gain = readGain(r);
     if (gain !== ABSENT) l.gain = gain;
-    const active = readActive(r, l.beats);
+    const active = readActive(r, beats);
     if (active !== ABSENT) l.active = active;
     if (r.bit()) {
       const extras = {
@@ -448,15 +408,14 @@ export function unpack(text) {
       };
       for (const [key, value] of Object.entries(extras)) if (value !== ABSENT) l[key] = value;
     }
-    layer.push(l);
-  }
+    return l;
+  });
   const bars = r.pick(unique([repeatBars(layer), 8, 4, 16, 2, 1, 6, 12, 32]), () => r.eg());
-  // In the order a saved piece lists them.
   const spec = { tempo, base, bars };
   if (click !== ABSENT) spec.click = click;
   if (sampleRate !== ABSENT) spec.sample_rate = sampleRate;
   if (scale !== ABSENT) spec.scale = scale;
   if (root !== ABSENT) spec.root = root;
   spec.layer = layer;
-  return { name, spec };
+  return spec;
 }

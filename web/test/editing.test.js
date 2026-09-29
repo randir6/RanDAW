@@ -397,6 +397,22 @@ test("editing: while playing, an edit waits for the next bar and playback carrie
     assert.equal((await page.evaluate("({ ...document.documentElement.dataset })")).error, undefined);
   }));
 
+test("editing: Stop goes back to the start, so Play always begins there", { skip }, () =>
+  editing("tresillo", async (page) => {
+    const seconds = () => page.evaluate("parseFloat(document.getElementById('clock').textContent)");
+    assert.equal(await page.evaluate("document.getElementById('stop').disabled"), true);
+    await click(page, "#play");
+    await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 0.3");
+    await click(page, "#stop");
+    assert.equal(await page.evaluate("document.getElementById('play').textContent"), "Play");
+    assert.equal(await seconds(), 0);
+    assert.equal(await page.evaluate("document.getElementById('stop').disabled"), true);
+    // An edit while stopped leaves it at the start.
+    await tap(page, '.band[data-layer="0"][data-beat="2"]');
+    await page.waitFor("!document.documentElement.dataset.busy");
+    assert.equal(await seconds(), 0);
+  }));
+
 test("editing: the drawing waits for sound to reach the speakers", { skip }, () =>
   editing("tresillo", async (page) => {
     // Pretend the speakers are 300 ms away, as Bluetooth headphones often

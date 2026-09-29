@@ -71,6 +71,14 @@ export function setLayer(spec, index, key, value) {
   return next;
 }
 
+// Set one layer's root. Stepping it back to the piece's root removes it, so
+// the layer follows the piece again: a layer's own root overrides the
+// piece's, and one left behind at the same number would quietly stop the
+// piece's Root from reaching this layer.
+export function setLayerRoot(spec, index, root) {
+  return setLayer(spec, index, "root", root === (spec.root ?? 0) ? null : root);
+}
+
 // A new layer: a single hit, on a sample not used yet if there is one, fairly
 // quiet so adding it does not suddenly overload the mix. The click's sample
 // can be chosen for a layer from the menu, but is never picked for you.
@@ -250,8 +258,11 @@ export function switchPitchKind(spec, index, kind) {
     delete layer.scale;
     delete layer.root;
   } else {
-    // With no scale anywhere yet, start from major.
-    if (effectiveScale(spec, layer) === null) layer.scale = "major";
+    // With no scale anywhere yet, start the whole piece in major. Setting it
+    // on the piece rather than the layer keeps the piece's Scale menu in
+    // charge: a layer's own scale would override it, and changing the
+    // piece's scale would then do nothing to this layer.
+    if (effectiveScale(spec, layer) === null) next.scale = "major";
     const scale = effectiveScale(next, layer);
     const root = effectiveRoot(next, layer);
     layer.degrees = layer.notes.map((n) => (n === REST ? REST : nearestDegree(n, scale, root)));

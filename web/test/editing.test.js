@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import {
-  addLayer, duplicateLayer, setAllBeats, setBeats, setOver, setPosition, setSequence, setSetting, toggleBeat, toggleMute, toggleSolo,
+  addLayer, duplicateLayer, setAllBeats, setBeats, setFollow, setOver, setPosition, setSequence, setSetting, toggleBeat,
+  toggleMute, toggleSolo,
 } from "../src/edit.js";
 import { fnv1a } from "../src/fingerprint.js";
 import { pieceToLink } from "../src/link.js";
@@ -36,8 +37,11 @@ const print = (spec) => fnv1a(renderWav(spec).wav);
 const FINGERPRINT = "document.documentElement.dataset.audioFingerprint";
 
 // Open the page on an example, with no piece left over from another check.
+// The grid is asked for by name: the drawing last chosen is remembered, so a
+// check that fails while in rings or polygons would otherwise leave every
+// check after it looking at the wrong drawing, and failing for no reason.
 async function editing(name, check) {
-  const page = await browser.open(`${PAGE}?example=${name}`);
+  const page = await browser.open(`${PAGE}?example=${name}&view=grid`);
   try {
     await page.evaluate("localStorage.clear(), true");
     return await check(page);
@@ -57,7 +61,8 @@ async function fingerprint(page) {
   await page.waitFor("!document.documentElement.dataset.busy");
   return page.evaluate(FINGERPRINT);
 }
-const button = (card, text) => `.card:nth-of-type(${card + 1}) button[title^="${text}"]`;
+const card = (layer) => `.card[data-layer="${layer}"]`;
+const button = (layer, text) => `${card(layer)} button[title^="${text}"]`;
 
 test("editing: tapping a beat switches it off; undo and redo step through it", { skip }, () =>
   editing("tresillo", async (page) => {
@@ -114,8 +119,61 @@ test("editing: picking a position and a key sets it, and shows where it lands", 
     assert.ok(await page.evaluate("document.querySelectorAll('#stage .picked').length") >= 3,
       "the position is outlined everywhere it lands");
     assert.equal(await page.evaluate("document.querySelector('.keypad .label').textContent"), "Position 2");
-    await page.evaluate(`[...document.querySelectorAll(".keypad button")].find((b) => b.textContent === "3").click(), true`);
+    await click(page, '.keypad .key[data-value="3"]');
     assert.equal(await fingerprint(page), print(setPosition(spec, 0, 1, 3)));
+  }));
+
+test("editing: the keypad is a keyboard of the layer's scale, naming the notes", { skip }, () =>
+  editing("rests", async (page) => {
+    await click(page, ".card .tile", 0);  // the pluck (tuned to A) in dorian
+    const keys = await page.evaluate(`[...document.querySelectorAll(".keypad .key")].map((k) =>
+      [k.dataset.value ?? null, k.querySelector(".note").textContent, k.disabled, k.classList.contains("black")])`);
+    // A dorian is A B C D E F# G: the degrees are on those keys, and the
+    // rest of the octave is shown but cannot be chosen.
+    const chosen = keys.filter(([value]) => value !== null).map(([value, note]) => `${value}:${note}`);
+    assert.deepEqual(chosen, ["1:A3", "2:B3", "3:C4", "4:D4", "5:E4", "6:F♯4", "7:G4", "8:A4"]);
+    assert.ok(keys.filter(([value]) => value === null).every(([, , disabled]) => disabled));
+    assert.deepEqual(keys.find(([value]) => value === "6").slice(2), [false, true], "F# is a black key");
+    assert.equal(await page.evaluate("document.querySelector('.keypad .now').textContent"), "A3");
+    // The home chord is marked.
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll(".keypad .key.chord")].map((k) => k.dataset.value)`),
+      ["1", "3", "5", "8"]);
+  }));
+
+test("editing: a semitone layer's keypad is a chromatic keyboard", { skip }, () =>
+  editing("rests", async (page) => {
+    const spec = example("rests");
+    await click(page, `${card(3)} .tile`, 0);  // the hat: semitones
+    assert.equal(await page.evaluate("document.querySelectorAll('.keypad .key:disabled').length"), 0);
+    await click(page, '.keypad .key[data-value="7"]');
+    assert.equal(await fingerprint(page), print(setPosition(spec, 3, 0, 7)));
+    await click(page, ".keypad-row button[title='An octave up']");
+    assert.equal(await fingerprint(page), print(setPosition(spec, 3, 0, 19)));
+  }));
+
+test("editing: a melody can follow its hits, so switching a beat off keeps every note", { skip }, () =>
+  editing("rests", async (page) => {
+    const spec = example("rests");
+    const off = toggleBeat(spec, 0, 2);
+    await click(page, button(0, "Beat 2"));
+    assert.equal(await fingerprint(page), print(off));
+    await click(page, button(0, "Notes follow hits"));
+    assert.equal(await fingerprint(page), print(setFollow(off, 0, "hits")));
+    // 7 positions moving on 4 a bar take 7 bars to come round, as before.
+    assert.match(await page.evaluate("document.querySelector('.card .sequence-row .repeat').textContent"), /7 bars/);
+    // A sequence of one note sounds the same either way, so is not offered the choice.
+    assert.equal(await page.evaluate(`document.querySelector('${card(3)} .follow')`), null);
+  }));
+
+test("editing: a drum's pitch settings are folded away until asked for", { skip }, () =>
+  editing("rests", async (page) => {
+    const pitchMenus = () => page.evaluate(`document.querySelectorAll(".card .melody select").length`);
+    // The pluck and bell each have Pitch and Scale; the kick and hat, none.
+    assert.equal(await pitchMenus(), 4);
+    await click(page, `${card(2)} .unfold`);
+    assert.equal(await pitchMenus(), 5);
+    await click(page, `${card(2)} .unfold`);
+    assert.equal(await pitchMenus(), 4);
   }));
 
 test("editing: typing a sequence sets it; a mistake is explained and changes nothing", { skip }, () =>
@@ -253,7 +311,6 @@ test("editing: in polygons, tapping an empty corner switches that beat on", { sk
     assert.equal(await fingerprint(page), print(toggleBeat(example("tresillo"), 0, 2)));
     // Now sounding, it has a mark instead of an empty corner.
     assert.equal(await page.evaluate(`document.querySelectorAll('.poly-off[data-layer="0"][data-beat="2"]').length`), 0);
-    await page.evaluate("document.getElementById('mode-grid').click(), true");
   }));
 
 test("editing: the piece survives a reload", { skip }, () =>
@@ -436,14 +493,17 @@ test("editing: jumping while playing carries on playing from the new place", { s
   editing("tresillo", async (page) => {
     await click(page, "#play");
     await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 0.3");
-    await click(page, "#next");  // the next page: bars 5-8, starting at 8 s
+    await click(page, "#next");  // the next page: bars 5-6, starting at 8 s
     await page.waitFor("parseFloat(document.getElementById('clock').textContent) > 8.3");
     assert.equal(await page.evaluate("document.getElementById('play').textContent"), "Pause");
-    assert.equal(await page.evaluate("document.getElementById('window').textContent"), "bars 5–8 of 8");
+    assert.equal(await page.evaluate("document.getElementById('window').textContent"), "bars 5–6 of 6");
   }));
 
 test("editing: the piece says how long its pattern takes, and can loop on it exactly", { skip }, () =>
   editing("rests", async (page) => {
+    // The example is a whole 21 bars; cut it to 6, part-way through its pattern.
+    for (let i = 0; i < 15; i++) await click(page, ".piece-controls button[aria-label='Bars down']");
+    assert.equal(await fingerprint(page), print(setSetting(example("rests"), "bars", 6)));
     assert.match(await page.evaluate("document.querySelector('.piece-controls .repeat').textContent"),
       /whole pattern repeats every 21 bars/);
     await page.evaluate(`[...document.querySelectorAll(".piece-controls button")].find((b) => b.textContent === "Use 21 bars").click(), true`);
@@ -453,7 +513,10 @@ test("editing: the piece says how long its pattern takes, and can loop on it exa
 
 test("editing: the length suggestion rounds up to whole repeats, keeping the length chosen", { skip }, () =>
   editing("tresillo", async (page) => {
-    // tresillo: 8 bars of a pattern that repeats every 3. The next whole number is 9.
+    // tresillo is 6 bars of a pattern that repeats every 3. Made 8, the next
+    // whole number of repeats is 9.
+    for (let i = 0; i < 2; i++) await click(page, ".piece-controls button[aria-label='Bars up']");
+    await page.waitFor("!document.documentElement.dataset.busy");
     const button = "[...document.querySelectorAll('.piece-controls .repeat button')].map((b) => b.textContent)";
     assert.deepEqual(await page.evaluate(button), ["Use 9 bars"]);
   }));

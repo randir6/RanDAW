@@ -1,9 +1,412 @@
 {
-  "phase_study": "#phase_study.filter-monday-confining.vmREFEMaWkwRiiw6gUIUo",
-  "rests": "#rests.knee-phonics-bamboo.68myLKXc5Ji0spEms3uusGh0-OHX",
-  "scales": "#scales.flatworm-outward-postal.y1XkVkTMQS6ylMxtdrRCo03tNJg0Mnxwq4",
-  "seven": "#seven.barrack-savor-anybody.J93TBpDUaJTI-LmDe_",
-  "spans": "#spans.flatfoot-unpicked-starboard.tNd3YWRMyqpFA0QHNJIuY",
-  "sparse_dub": "#sparse_dub.disregard-anointer-breeze.o33hwhFU1jWECxBHJI44hBJgTD",
-  "tresillo": "#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V"
+  "phase_study": {
+    "link": "#phase_study.filter-monday-confining.vmREFEMaWkwRiiw6gUIUo",
+    "spec": {
+      "tempo": 100,
+      "base": 4,
+      "bars": 7,
+      "layer": [
+        {
+          "beats": 5,
+          "notes": [
+            0,
+            3,
+            7,
+            10,
+            12,
+            7,
+            3
+          ],
+          "sample": "pluck.wav",
+          "gain": 0.38
+        },
+        {
+          "beats": 3,
+          "notes": [
+            0,
+            12
+          ],
+          "sample": "bell.wav",
+          "gain": 0.22
+        },
+        {
+          "beats": 4,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.5
+        }
+      ]
+    }
+  },
+  "rests": {
+    "link": "#rests.knee-phonics-bamboo.68myLKXc5Ji0spEms3uusGh0-OHX",
+    "spec": {
+      "tempo": 110,
+      "base": 4,
+      "bars": 6,
+      "scale": "dorian",
+      "layer": [
+        {
+          "beats": 5,
+          "degrees": [
+            1,
+            "-",
+            5,
+            4,
+            "-",
+            2,
+            8
+          ],
+          "sample": "pluck.wav",
+          "gain": 0.38
+        },
+        {
+          "beats": 3,
+          "degrees": [
+            1,
+            "-",
+            5
+          ],
+          "root": 12,
+          "sample": "bell.wav",
+          "gain": 0.18
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0,
+            "-",
+            0,
+            0,
+            "-",
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.6
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.14,
+          "active": [
+            3,
+            6,
+            8
+          ]
+        }
+      ]
+    }
+  },
+  "scales": {
+    "link": "#scales.flatworm-outward-postal.y1XkVkTMQS6ylMxtdrRCo03tNJg0Mnxwq4",
+    "spec": {
+      "tempo": 100,
+      "base": 4,
+      "bars": 6,
+      "scale": "dorian",
+      "root": 0,
+      "layer": [
+        {
+          "beats": 5,
+          "degrees": [
+            1,
+            3,
+            5,
+            8,
+            5,
+            3,
+            2
+          ],
+          "sample": "keys.wav",
+          "gain": 0.25
+        },
+        {
+          "beats": 3,
+          "degrees": [
+            1,
+            5
+          ],
+          "root": 12,
+          "sample": "bell.wav",
+          "gain": 0.15
+        },
+        {
+          "beats": 4,
+          "degrees": [
+            1,
+            1,
+            4,
+            3
+          ],
+          "root": -12,
+          "sample": "tom.wav",
+          "gain": 0.26
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.52,
+          "active": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.12,
+          "active": [
+            3,
+            6,
+            8
+          ]
+        }
+      ]
+    }
+  },
+  "seven": {
+    "link": "#seven.barrack-savor-anybody.J93TBpDUaJTI-LmDe_",
+    "spec": {
+      "tempo": 150,
+      "base": 7,
+      "bars": 6,
+      "layer": [
+        {
+          "beats": 7,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.7,
+          "active": [
+            1,
+            4,
+            6
+          ]
+        },
+        {
+          "beats": 7,
+          "notes": [
+            0
+          ],
+          "sample": "snare.wav",
+          "gain": 0.33,
+          "active": [
+            3
+          ]
+        },
+        {
+          "beats": 7,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.18,
+          "active": [
+            2,
+            5,
+            7
+          ]
+        },
+        {
+          "beats": 4,
+          "notes": [
+            0,
+            -4
+          ],
+          "sample": "tom.wav",
+          "gain": 0.3
+        }
+      ]
+    }
+  },
+  "spans": {
+    "link": "#spans.flatfoot-unpicked-starboard.tNd3YWRMyqpFA0QHNJIuY",
+    "spec": {
+      "tempo": 100,
+      "base": 4,
+      "bars": 8,
+      "scale": "minor",
+      "layer": [
+        {
+          "beats": 4,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.6
+        },
+        {
+          "beats": 7,
+          "over": 2,
+          "degrees": [
+            1,
+            3,
+            5,
+            4,
+            3,
+            2,
+            5
+          ],
+          "sample": "marimba.wav",
+          "gain": 0.4
+        },
+        {
+          "beats": 13,
+          "over": 2,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.16
+        },
+        {
+          "beats": 4,
+          "notes": [
+            0
+          ],
+          "sample": "snare.wav",
+          "gain": 0.3,
+          "active": [
+            2,
+            4
+          ]
+        }
+      ]
+    }
+  },
+  "sparse_dub": {
+    "link": "#sparse_dub.disregard-anointer-breeze.o33hwhFU1jWECxBHJI44hBJgTD",
+    "spec": {
+      "tempo": 80,
+      "base": 4,
+      "bars": 5,
+      "layer": [
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.8,
+          "active": [
+            1,
+            6
+          ]
+        },
+        {
+          "beats": 8,
+          "notes": [
+            -5
+          ],
+          "sample": "tom.wav",
+          "gain": 0.45,
+          "active": [
+            4
+          ]
+        },
+        {
+          "beats": 5,
+          "notes": [
+            0,
+            7,
+            3,
+            10
+          ],
+          "sample": "bell.wav",
+          "gain": 0.28,
+          "active": [
+            1,
+            3
+          ]
+        },
+        {
+          "beats": 16,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.15,
+          "active": [
+            3,
+            7,
+            11,
+            15
+          ]
+        }
+      ]
+    }
+  },
+  "tresillo": {
+    "link": "#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V",
+    "spec": {
+      "tempo": 120,
+      "base": 4,
+      "bars": 8,
+      "layer": [
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "kick.wav",
+          "gain": 0.75,
+          "active": [
+            1,
+            4,
+            7
+          ]
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0
+          ],
+          "sample": "snare.wav",
+          "gain": 0.42,
+          "active": [
+            5
+          ]
+        },
+        {
+          "beats": 3,
+          "notes": [
+            0
+          ],
+          "sample": "hat.wav",
+          "gain": 0.2
+        },
+        {
+          "beats": 8,
+          "notes": [
+            0,
+            3,
+            7,
+            10,
+            7,
+            3
+          ],
+          "sample": "pluck.wav",
+          "gain": 0.3,
+          "active": [
+            3,
+            6,
+            8
+          ]
+        }
+      ]
+    }
+  }
 }

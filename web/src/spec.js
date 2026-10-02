@@ -27,9 +27,9 @@
 // file: a web page cannot reach into folders on your disk.
 //
 // OLDER PIECES said `cycle_duration` (seconds per bar) or `pulse_duration`,
-// and `loops` (the number of bars). Those still read, and still sound exactly
-// as they did -- the checks compare them against answers recorded long ago --
-// and upgradeSpec() below turns one into the current form.
+// and `loops` (the number of bars). upgradeSpec() below turns one into the
+// current form, and the page does that whenever it opens a piece; the engine
+// itself reads only today's words.
 //
 // A note on names: the keys inside a spec use snake_case, because they are
 // the saved file format. JavaScript's own names use camelCase.
@@ -44,7 +44,7 @@ export const EXPORT_FORMAT = "randaw-piece";
 export const EXPORT_VERSION = 2;
 const READABLE_VERSIONS = [1, 2];
 
-// The older names for timing, still understood when reading.
+// The older names for timing, which upgradeSpec() understands.
 export const LEGACY_KEYS = ["cycle_duration", "pulse_duration", "loops"];
 
 // Listing the permitted keys lets us reject typos. Without this, writing
@@ -54,7 +54,7 @@ export const TOP_LEVEL_KEYS = [
   "tempo", "base", "bars", "click", "sample_rate", "scale", "root", "layer", ...LEGACY_KEYS,
 ];
 export const LAYER_KEYS = [
-  "beats", "over", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo",
+  "beats", "over", "notes", "degrees", "sample", "gain", "active", "scale", "root", "mute", "solo", "follow",
 ];
 
 // Settings a spec may carry, and the kind of value each must be.
@@ -162,9 +162,11 @@ export function readSpec(text, name = "file") {
 // the editor only ever meets today's words.
 //
 // The tempo is the BPM whose base beats fill the old bar length: a
-// cycle_duration of 2.2 s with 4 beats to the bar is 109.091 BPM. Rounded to three places, so the new piece can sound
-// a hair different -- a fraction of a millisecond per bar. Anything not
-// understood is left alone for buildPiece to explain.
+// cycle_duration of 2.2 s with 4 beats to the bar is 109.091 BPM, rounded to
+// three places. An older piece can therefore sound a hair different from
+// when it was saved: a fraction of a millisecond per bar from the rounding,
+// and up to one sample per beat because beats are now placed at their exact
+// times. Anything not understood is left alone for buildPiece to explain.
 export function upgradeSpec(spec) {
   if (!isPlainObject(spec) || !LEGACY_KEYS.some((key) => has(spec, key))) return spec;
   const next = structuredClone(spec);
@@ -217,8 +219,6 @@ export function formatSpec(spec) {
 // Check the top level of a spec and return its settings. `source` is only
 // for error messages, so a person can tell where the mistake is.
 //
-// The returned `legacy` is true for a piece in the older words, which is
-// timed exactly as it always was (see buildPiece).
 export function checkSettings(spec, source) {
   if (!isPlainObject(spec)) throw new SpecError(`${source}: expected a table of settings`);
   rejectUnknownKeys(spec, TOP_LEVEL_KEYS, source, "setting(s)");
@@ -247,7 +247,17 @@ export function checkSettings(spec, source) {
   if (has(settings, "bars") && has(settings, "loops")) {
     throw new SpecError(`${source}: give bars, or its older name loops, not both`);
   }
-  settings.legacy = LEGACY_KEYS.some((key) => has(settings, key));
+  // A piece in the older words is upgraded before it gets here, so any older
+  // setting still present is one upgradeSpec() could not make sense of --
+  // a cycle_duration of 0, say.
+  const older = LEGACY_KEYS.find((key) => has(settings, key));
+  if (older !== undefined) {
+    const instead = older === "loops" ? '"bars"' : '"tempo" in beats per minute';
+    throw new SpecError(
+      `${source}: ${older} is an older setting, and ${shown(settings[older])} cannot be turned into ` +
+        `today's; give ${instead} instead`,
+    );
+  }
 
   const click = has(spec, "click") ? spec.click : false;
   if (typeof click !== "boolean") throw new SpecError(`${source}: click must be true or false, got ${shown(click)}`);
@@ -321,10 +331,13 @@ export function layerFromSpec(entry, { defaultScale = null, defaultRoot = 0, whe
     return value;
   });
 
+  // Which beats move the sequence on; makeLayer checks the value.
+  const follow = has(entry, "follow") ? entry.follow : "beats";
+
   try {
     // The same rules everywhere -- one place, no drift.
     return makeLayer({
-      beats: entry.beats, over, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo,
+      beats: entry.beats, over, sample: entry.sample, notes, degrees, scale, root, gain, active, mute, solo, follow,
     });
   } catch (e) {
     // Only rule-breaking gets a friendly message. Anything else is a real

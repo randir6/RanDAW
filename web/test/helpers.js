@@ -1,14 +1,16 @@
-// Shared by the checks: loading the built-in samples, and the canonical
-// fingerprint that lets JavaScript and Python results be compared exactly.
+// Shared by the checks: loading the built-in samples and the examples, and
+// the fingerprints the answer key is recorded as.
 
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { pieceToDerived } from "../src/derive.js";
 import { buildPiece } from "../src/piece.js";
 import { finishMix, renderAudio } from "../src/render.js";
 import { schedule } from "../src/schedule.js";
+import { SpecError } from "../src/spec.js";
 import { decodeWav, encodeWav16 } from "../src/wav.js";
 
 // import.meta.url is this file's own address; these lines turn it into
@@ -28,9 +30,10 @@ export const readJson = (...parts) => JSON.parse(readFileSync(join(...parts), "u
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-// The same encoding as canonical() in the (retired) make_fixtures.py, which
-// recorded the fixtures: numbers as the hex of their 64-bit form, text as the
-// hex of its UTF-8 bytes.
+// A value written out so that equal values always give equal text, whatever
+// order their keys arrived in: numbers as the hex of their exact 64-bit form,
+// text as the hex of its UTF-8 bytes, keys sorted. (First written to match
+// the retired Python version's checks, and kept because it is exact.)
 export function canonical(value) {
   if (value === null) return "n";
   if (value === true) return "t";
@@ -53,4 +56,28 @@ export function renderWav(spec) {
   const piece = buildPiece(spec, { samples: LIBRARY.keys() });
   const mix = renderAudio(schedule(piece), { ...piece, library: LIBRARY });
   return { piece, wav: encodeWav16(finishMix(mix).mix, piece.sampleRate) };
+}
+
+// The example pieces, by name, as the page lists them.
+export const EXAMPLES = new Map(
+  readdirSync(join(WEB, "examples"))
+    .filter((file) => file.endsWith(".json"))
+    .sort()
+    .map((file) => [file.replace(/\.json$/, ""), readJson(WEB, "examples", file)]),
+);
+
+// Everything the engine makes of one spec, in a form small enough to record:
+// its verdict and, for a piece it accepts, a fingerprint of everything a
+// drawing is given and of the WAV file, byte for byte. For a piece it
+// refuses, the message a person would read. Anything but a SpecError is a
+// crash, which is a bug, never an answer.
+export function answerFor(spec) {
+  let made;
+  try {
+    made = renderWav(spec);
+  } catch (e) {
+    if (!(e instanceof SpecError)) throw e;
+    return { ok: false, error: e.message };
+  }
+  return { ok: true, derived: fingerprint(pieceToDerived(made.piece)), wav: sha256(made.wav) };
 }

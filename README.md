@@ -14,7 +14,8 @@ The program is one web page. Build it, then open it in any browser:
 ```bash
 cd web
 node build.js                 # -> web/dist/randaw.html, one self-contained file
-npm test                      # 107 checks, should all pass
+npm test                      # 153 checks, should all pass
+npm run shots                 # screenshots at iPad, laptop, phone -> web/dist/shots/
 ```
 
 Open `web/dist/randaw.html`, pick an example, press play. One row per layer,
@@ -40,7 +41,7 @@ The seven examples, in `web/examples/`:
 | `rests` | Rests that travel through the bar |
 | `seven` | 7 grouped 3-2-2 on a base of 7, with a 4-beat tom pulling against it |
 | `spans` | 7 and 13 beats, each spread over 2 bars of 4 |
-| `phase_study` | 5 beats against 7 notes — takes 7 bars to come back round |
+| `phase_study` | 5 beats against 7 notes, and 3 beats against 2 — 14 bars to come back round |
 | `sparse_dub` | Space rather than density |
 | `scales` | Change one word, the whole piece re-harmonises |
 
@@ -90,18 +91,33 @@ so the groove never stops.
   the whole pattern takes to repeat, and offers to set the length to a whole
   number of repeats, so the WAV loops on the pattern rather than restarting
   it part-way.
-- **Under it**, one card per layer: **M**ute, **S**olo, sample, **Beats**
-  and **over** how many bars they spread, semitones or scale degrees, scale,
-  root, gain, ⧉ to duplicate the layer and ✕ to remove it. An **On** row has
-  a button per beat — the same as tapping beats in the drawing, but easy to
-  hit on a phone.
+- **Under it**, one card per layer. Along the top: **M**ute, **S**olo,
+  sample, gain, ⧉ to duplicate the layer and ✕ to remove it. Then two
+  parts:
+  - **Rhythm** — **Beats** and **over** how many bars they spread, and an
+    **On** row with a button per beat (the same as tapping beats in the
+    drawing, but easy to hit on a phone). Beside it, **Notes follow beats |
+    hits**: whether a switched-off beat cuts its note out of the melody
+    (beats) or holds the melody back so every note is still heard (hits).
+    Only offered when the sequence has more than one value in it.
+  - **Melody** — semitones or scale degrees, scale and root, and the
+    Sequence row. A drum layer (every position 0) is headed **Hits**, and
+    its pitch settings fold away behind one button until wanted.
 - **The Sequence row** shows the layer's notes and rests, one tile per
   position. Tap a tile to choose it — every place that position lands
   lights up in the drawing, which is the clearest way to see a sequence
-  phase against its beats — then tap a key to change it, or **rest**. **+**
-  and **−** make the sequence longer or shorter. The text box beside it
-  holds the same sequence for typing or pasting. Beside it: how many bars
-  until this layer repeats.
+  phase against its beats — then choose a key on the keyboard that opens
+  under it, or **rest**. **+** and **−** make the sequence longer or
+  shorter. The text box beside it holds the same sequence for typing or
+  pasting. Beside it: how many bars until this layer repeats.
+- **The keyboard** is one octave of piano. For scale degrees it runs from
+  degree 1 to the 1 above; keys in the scale carry their degree, the rest
+  are greyed so you can see the scale's shape, and in a seven-note scale
+  1, 3 and 5 (the home chord) are underlined. For semitones every key can
+  be pressed. **▼ oct / ▲ oct** move the note an octave. The built-in
+  melodic sounds were made at known pitches (pluck, keys and marimba on A,
+  bell on E, tom on A), so for those each key names its note — A3, F♯4 —
+  as does the position being edited.
 - **Undo / Redo**, also ⌘Z / Ctrl+Z. **Escape** puts the position keypad away.
 - **A mix that clips** (too loud, so it distorts) says so, with a button to
   turn every layer down by the same amount, just enough to fit.
@@ -140,6 +156,7 @@ all use, and they mean exactly this. In the order they build on each other:
 | **Beat** | One of a layer's divisions of its span of bars. Every layer has its own beats. | `"beats": 7` |
 | **Over** | How many bars a layer's beats are spread across: "7 beats over 2 bars". | `"over": 2` (1 if left out) |
 | **Sequence** | A layer's notes and rests, read one **position** per beat. | `"notes"` or `"degrees"` |
+| **Follow** | Whether a layer's sequence moves on at every beat, or only at the beats that sound. | `"follow": "hits"` (`"beats"` if left out) |
 | **Repeats every N bars** | When a layer's pattern — or the whole piece's — comes back round to where it started. | |
 | **Length** | The whole file, in bars. | `"bars": 8` |
 | **Click** | The base beats made audible, higher on beat 1 of each bar. Off unless turned on. | `"click": true` |
@@ -192,8 +209,20 @@ Fixed: an inactive beat is silent on the same beat *every* time round. That
 is the difference from a rest, and it is the distinction worth keeping
 straight.
 
+**Follow** — what a switched-off beat does to the sequence. Following
+**beats** (the default), every beat moves the sequence on, so the note that
+would have fallen on a switched-off beat is simply not heard: right for a
+drum pattern. Following **hits**, only the beats that sound move it on, so
+every note is heard in turn and switching beats off changes the rhythm of
+the melody, not its notes: usually right for a melody. The two differ only
+when some beat is switched off. A rest still takes its turn either way,
+because it belongs to the melody. Switching a layer to scale degrees in the
+page sets it to follow hits (unless it already said); a saved piece without
+`follow` follows beats, as every piece did before.
+
 **Layer** — a beat count (over some bars), a sequence, one sample, a gain,
-and optionally which of its own beats sound.
+and optionally which of its own beats sound and whether its sequence
+follows beats or hits.
 
 **Note** — a pitch written as a semitone offset. `0` is unison, `12` an octave
 up. Right for drums, where a scale means nothing.
@@ -238,9 +267,11 @@ turns them into today's as it opens them (`upgradeSpec` in `spec.js`):
 | cycle | bar |
 | step (of a sequence) | position |
 
-A piece may use one form or the other, not both. The engine still reads the
-older keys directly and times them exactly as before, which is how the
-checks can compare against answers recorded long ago.
+A piece may use one form or the other, not both. The engine itself reads
+only today's words: the page upgrades an older piece whenever it opens one.
+An upgraded piece can sound a hair different from when it was saved -- the
+tempo is rounded to three places, and beats are now placed at their exact
+times -- by at most about a sample per beat.
 
 ## How the code is laid out
 
@@ -306,8 +337,9 @@ ways JavaScript and Python disagree about arithmetic.
 Phases 1–9 were built in Python; phase 10 moved the engine into the page,
 and phase 11 retired the Python version once the page had been tried on a
 phone. It is all in git history up to commit `3fffdeb` (`git checkout 3fffdeb`
-to see it). What it did is pinned down by the recorded answers in
-`web/test/fixtures/`, which the JavaScript still has to match.
+to see it). The JavaScript engine was held to its answers byte for byte until
+it matched exactly; those checks were then retired, and the answer key in
+`web/test/fixtures/` is now the JavaScript engine's own.
 
 `make_samples.py` is the one Python file left: the record of how the
 built-in sounds were made (`pip install -r requirements.txt`, then
@@ -320,6 +352,8 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 - **`PHASE1_SPEC.md`** — the original phase 1 spec, kept as written.
 - **`PHASES.md`** — the plan, and what each finished phase settled and why.
   **Read this to find out where the work got to.**
+- **`DESIGN.md`** — how the page should look and feel, and how to check a
+  change by eye (`npm run shots`).
 - **`NOTES.md`** — known limitations (with measurements), the backlog, and
   decisions worth remembering. Read the backlog before proposing new work.
 
@@ -327,7 +361,7 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 
 **Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
 is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
-(not merged, no pull request). All 107 checks pass.
+(not merged, no pull request). All 119 checks pass.
 
 ### What works
 
@@ -342,7 +376,8 @@ is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
 - **Three drawings**, switched with Grid | Rings | Polygons, all tappable.
   The drawing allows for the delay of Bluetooth speakers and headphones
   where the browser reports it.
-- **Output:** a WAV that loops seamlessly, and the piece as a small `.json`.
+- **Output:** a WAV that loops seamlessly and is exactly the tempo's length,
+  so it stays in time in a DAW or looper; and the piece as a small `.json`.
 - **Sounds:** synthetic kick, snare, hat, tom; pluck, keys and marimba (all
   in A) and bell (E) for melodies; the click.
 
@@ -350,31 +385,29 @@ is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
 
 In rough order of how much they matter:
 
-1. **Exact loop length.** A file is the tempo's length only to within a few
-   milliseconds per bar (8 bars of `spans` come out 15 ms long), so a loop
-   can drift against a DAW at the same tempo. The fix is known and small-ish
-   -- place each beat at its exact fraction of the bar -- and is written up
-   in `NOTES.md`. Recommended next piece of work.
-2. **Did the drawing-delay fix work on your headphones?** While playing, a
+1. **Did the drawing-delay fix work on your headphones?** While playing, a
    note beside the clock should say "drawing delayed N ms to match your
    speakers". If it never appears on the iPad/iPhone, the browser there does
    not report the delay, and a manual setting would be the fallback.
-3. **Rest behaviour** -- rests travel with the sequence; should they, always?
+2. **Rest behaviour** -- rests travel with the sequence; should they, always?
    See Open questions in `NOTES.md`.
-4. **Sections** (phase 13): variation across bars, e.g. four 4-bar sections
+3. **Sections** (phase 13): variation across bars, e.g. four 4-bar sections
    in a 16-bar file. The words are settled now; the design notes are in
    `NOTES.md`.
-5. **Your own samples** in the page -- where they are kept, how big, whether
+4. **Your own samples** in the page -- where they are kept, how big, whether
    "Save page" carries them. Real recordings would also want leading silence
    trimmed automatically, and maybe a per-layer nudge for feel.
-6. **Hosting**, so the iPad can open the page from an address. Set up as
+5. **Hosting**, so the iPad can open the page from an address. Set up as
    GitHub Pages: `.github/workflows/pages.yml` runs the checks, builds the
    page and publishes it to https://randir6.github.io/RanDAW/ on every push
    to the default branch. It needs the repo public and Settings -> Pages ->
    Source set to "GitHub Actions".
-7. Small ones: the `rests` example is 6 bars of a pattern that repeats every
-   21 (the page offers "Use 21 bars"); more drawings were floated (a
-   scrolling timeline like a DAW's arrangement view).
+6. Small ones: more drawings were floated (a scrolling timeline like a DAW's
+   arrangement view).
+
+**Done since parking:** loops are now exactly the tempo's length, and every
+example is a whole number of its pattern's repeats -- see PHASES.md, "Exact
+loops".
 
 ### Picking it up again
 
@@ -382,7 +415,7 @@ In rough order of how much they matter:
 git checkout claude/polyrhythm-vision-setup-jfos3r
 cd web
 node build.js      # -> dist/randaw.html; open it in a browser
-npm test           # 107 checks; the browser ones need Chromium (CHROMIUM=path)
+npm test           # 153 checks; the browser ones need Chromium (CHROMIUM=path)
 ```
 
 Then read `PHASES.md` from "Phase 12" down, and the Open questions and
@@ -404,14 +437,17 @@ remaking the built-in sounds (`make_samples.py`).
 
 `npm test` (in `web/`) runs seven sets of checks:
 
-- **engine** — the rules, stated directly: timing, layers over several
-  bars, the click, rests, switched-off beats, wrapping tails, reading,
-  saving and upgrading pieces, and the traps specific to JavaScript.
-- **parity** — the answer key. The Python engine's results for the six
-  original examples and 600 random pieces were recorded in `test/fixtures/`,
-  and the JavaScript engine must match them exactly: same verdict, same grid,
-  byte-identical WAV. They are in the older words, so they also prove older
-  pieces still sound exactly as they did.
+- **engine** — the rules, stated directly: timing and exact loop length,
+  layers over several bars, the click, rests, switched-off beats, wrapping
+  tails, reading, saving and upgrading pieces, the traps specific to
+  JavaScript -- and what correct sound is: pitch shifts within a cent,
+  resampling, mixing, and 16-bit output.
+- **answers** — the answer key. Every example and 600 random pieces (about
+  a third broken on purpose, in 61 ways) with the engine's verdict, grid and
+  WAV fingerprints, and each refusal's exact message, in
+  `test/fixtures/answers.json`. Any change to any of them fails. When a
+  change is deliberate -- a better resampler, say -- re-record with
+  `node test/record_answers.js` and read the diff before committing.
 - **edit** — every change the editor can make, checked without a browser.
 - **fuzz** — thousands of random edits from a fixed seed; nothing may crash,
   and rules that must always hold (one cell per beat, solo beats mute,

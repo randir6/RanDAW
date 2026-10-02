@@ -1,7 +1,7 @@
 {
   "tempo": 100,
   "base": 4,
-  "bars": 7,
+  "bars": 14,
   "layer": [
     {"beats": 5, "notes": [0, 3, 7, 10, 12, 7, 3], "sample": "pluck.wav", "gain": 0.38},
     {"beats": 3, "notes": [0, 12], "sample": "bell.wav", "gain": 0.22},

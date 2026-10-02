@@ -35,16 +35,13 @@ export const CLICK_DOWNBEAT = 7;  // semitones up on beat 1: a fifth higher
 // cut in 7 each -- and in general beats / gcd(beats, over) per bar. (6 beats
 // over 2 bars is just 3 per bar, so it needs only 3.)
 //
-// `base`, when given, joins in too, so the base beats -- the click, and the
-// faint lines in the picture -- land on pulses as well. Older pieces are
-// timed without it (see buildPiece), which is why it is optional.
+// The base joins in too, so the base beats -- the click, and the faint lines
+// in the picture -- land on pulses as well.
 //
-// .reduce() folds a list down to one value, here by taking the lcm of the
-// running answer with each layer's need in turn.
-export function pulsesPerBar(layers, base = null) {
-  const layersNeed = layers.reduce(
-    (running, layer) => lcm(running, layer.beats / gcd(layer.beats, layer.over)), 1);
-  return base === null ? layersNeed : lcm(layersNeed, base);
+// .reduce() folds a list down to one value: here it starts from the base and
+// takes the lcm of the running answer with each layer's need in turn.
+export function pulsesPerBar(layers, base) {
+  return layers.reduce((running, layer) => lcm(running, layer.beats / gcd(layer.beats, layer.over)), base);
 }
 
 // Visit every beat of every layer across the piece, saying what happens
@@ -85,12 +82,17 @@ function* walk({ layers, bars, pulsesPerBar: perBar }) {
     // keeps running rather than restarting each bar, so a 3-beat layer's
     // second bar begins at position 3 of its sequence. A layer over 2 bars
     // in a 3-bar piece just stops half-way through its second span.
+    //
+    // `hits` counts only the beats that are switched on, for a layer whose
+    // sequence follows its hits rather than its beats (see below).
+    let hits = 0;
     for (let count = 0; count * spacing < end; count++) {
       const pulse = count * spacing;
 
       // Which of the layer's beats this is, 0 up to beats - 1: the same beat
       // each time the layer comes round its span of bars.
       const beat = count % layer.beats;
+      const on = layer.activeBeats === null || layer.activeBeats.has(beat);
 
       // % wraps the count back to 0 when it runs off the end of the
       // sequence. (Safe here: both numbers are positive. See numbers.js for
@@ -101,22 +103,30 @@ function* walk({ layers, bars, pulsesPerBar: perBar }) {
       // the beats. Give the sequence a length equal to the beat count, or a
       // multiple of it, and you get a plainly composed pattern instead. Both
       // are the same model.
-      const position = count % layer.notes.length;
+      //
+      // A layer that follows its HITS counts only the beats that sound, so
+      // a switched-off beat holds the sequence back and every note is heard
+      // in turn: switching beats off changes the melody's rhythm, not its
+      // notes. A switched-off beat is given the position the next hit will
+      // play -- the note it WOULD sound if it were switched back on.
+      const played = layer.follow === "hits" ? hits : count;
+      if (on) hits += 1;
+      const position = played % layer.notes.length;
       const semitones = layer.notes[position];
 
       // What happens here. The order of these tests matters: a beat that is
       // switched off is silent whatever the sequence says.
       //
-      // INACTIVE -- the same beat is silent every time round. It does NOT
-      // hold the sequence back: the note this beat would have played is
-      // simply not heard. Muting a step on a drum machine rather than
-      // deleting it.
+      // INACTIVE -- the same beat is silent every time round. Following
+      // beats, it does NOT hold the sequence back: the note this beat would
+      // have played is simply not heard. Muting a step on a drum machine
+      // rather than deleting it. (Following hits, it does -- see above.)
       //
       // REST -- a rest in the sequence travels with the SEQUENCE, so when
       // the sequence and the beat count are different lengths, the silence
       // lands on a different beat each time round.
       let status;
-      if (layer.activeBeats !== null && !layer.activeBeats.has(beat)) status = STATUS_INACTIVE;
+      if (!on) status = STATUS_INACTIVE;
       else if (semitones === null) status = STATUS_REST;
       else status = STATUS_NOTE;
 

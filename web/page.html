@@ -239,7 +239,21 @@
     border-left: 6px solid var(--c); display: grid; gap: 8px;
   }
   .card.silent { opacity: .65; }
-  .card-head, .sequence-row, .keypad { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .card-head, .sequence-row, .keypad-row, .section-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  /* Rhythm and Melody: each a group of rows, with a rule above to set it
+     apart from the card's head and from each other. */
+  .section { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--grid); }
+  .section-title {
+    font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--ink-2); min-width: 5.2em;
+  }
+  .unfold { font-size: 13px; color: var(--ink-2); }
+  /* Notes follow beats | hits: two buttons joined into one control, set a
+     little apart from the beat buttons it changes the meaning of. */
+  .follow { display: inline-flex; align-items: center; margin-left: 14px; }
+  .follow .toggle { font-weight: 600; font-size: 13px; min-height: 34px; padding: 4px 10px; }
+  .follow .toggle:nth-of-type(1) { border-radius: 8px 0 0 8px; }
+  .follow .toggle:nth-of-type(2) { border-radius: 0 8px 8px 0; margin-left: -1px; }
   .card .swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
   .switches { display: inline-flex; gap: 6px; }
   .toggle { min-width: 40px; font-weight: 700; }
@@ -281,9 +295,35 @@
   .sequence-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   input.sequence { width: 13em; font-family: ui-monospace, Menlo, monospace; }
   .field-error { color: var(--error); font-size: 13px; }
-  .keypad { padding: 8px; border-radius: 10px; background: var(--row); }
-  .keypad button { min-width: 44px; }
-  .keypad .on { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .keypad { padding: 8px; border-radius: 10px; background: var(--row); display: grid; gap: 10px; }
+  .keypad-row button { min-width: 44px; }
+  .keypad-row .on { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .keypad .now { font-weight: 650; min-width: 2.5em; }
+  /* The piano: white keys side by side, black keys laid over the lines
+     between them (placed by the editor, as a share of the width). */
+  .piano { position: relative; display: flex; height: 112px; max-width: 560px; user-select: none; }
+  .key {
+    padding: 0 0 6px; min-width: 0; border-radius: 0 0 7px 7px; font-variant-numeric: tabular-nums;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 1px;
+  }
+  .key.white { flex: 1; background: #fdfdfb; color: #0b0b0b; border: 1px solid var(--bar); margin-left: -1px; }
+  .key.black {
+    position: absolute; top: 0; height: 62%; transform: translateX(-50%); z-index: 1;
+    background: #2b2a28; color: #fdfdfb; border: 1px solid #0b0b0b; padding-bottom: 4px;
+  }
+  .key .degree { font-weight: 700; font-size: 15px; line-height: 1.1; }
+  .key.black .degree { font-size: 13px; }
+  .key .note { font-size: 11px; opacity: .75; }
+  /* Keys outside the scale are there to show its shape, not to press. */
+  .key.out, .key:disabled { cursor: default; opacity: 1; }
+  .key.white.out { background: #ecebe6; color: #8b8a84; }
+  .key.black.out { background: #6e6d68; color: #cfcec8; }
+  /* The home chord (1, 3, 5), marked in the layer's colour. */
+  .key.chord .degree { text-decoration: underline 3px var(--c); text-underline-offset: 3px; }
+  .key.white.on { background: var(--c); border-color: var(--ink); }
+  .key.black.on { background: color-mix(in srgb, var(--c) 70%, #0b0b0b); }
+  .key.on .degree, .key.on .note { color: #0b0b0b; opacity: 1; }
+  .key.black.on .degree, .key.black.on .note { color: #fdfdfb; }
   .pending { color: var(--warn); font-size: 13px; }
   .latency { color: var(--ink-3); font-size: 13px; }
   .repeat { color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }

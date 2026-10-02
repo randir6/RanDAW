@@ -696,7 +696,7 @@ shifting, mixing and the 16-bit output, and on 61 kinds of broken piece.
   re-recorded. About 500 kB of fixtures went.
 - **Checks: 119.**
 
-**Recommended next:** hosting, so the page can be tried on the iPad with a real looper,
+**Recommended next:** try the hosted page on the iPad with a real looper,
 then sections.
 
 ---

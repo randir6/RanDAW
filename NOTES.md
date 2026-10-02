@@ -202,8 +202,8 @@ Design notes from thinking it through, so the work does not start cold:
   14 in the examples are), melodies as a chord and a shape where they are
   one, and bars as "until it repeats" where they are. Nothing about the
   editor changed to allow it. The link is then `#name.three-words.tail`
-  (tresillo: `#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`, 55 characters; the
-  examples 47-66, varying with how long their words happen to be). The name
+  (tresillo: `#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT44Mb`, 56 characters; the
+  examples 47-65, varying with how long their words happen to be). The name
   is readable and outside the checks, so editing it renames the piece. The
   words (6,510 from EFF's long list, after passes for friendliness that
   stop at the fewest words three can be and still hold 38 bits) hold the first 32 bits -- the skeleton, written

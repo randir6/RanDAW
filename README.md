@@ -28,7 +28,7 @@ whole page with your piece inside, which is the one file you can email to
 someone. The link is shorter still, and
 readable: the page's address always carries the piece being edited, as its
 name, three words and a short tail (tresillo is
-`#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V`), so sending or bookmarking the address
+`#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT44Mb`), so sending or bookmarking the address
 shares or keeps the piece, with nothing stored anywhere. The page
 needs no internet connection and nothing installed; it works on an iPad as
 well as a laptop.
@@ -360,8 +360,7 @@ built-in sounds were made (`pip install -r requirements.txt`, then
 ## Where things stand
 
 **Parked on 26 September 2026**, after phase 12 and some follow-ups. Everything
-is committed and pushed to the branch `claude/polyrhythm-vision-setup-jfos3r`
-(not merged, no pull request). All 119 checks pass.
+is merged into `main`, and all 153 checks pass.
 
 ### What works
 
@@ -397,22 +396,19 @@ In rough order of how much they matter:
 4. **Your own samples** in the page -- where they are kept, how big, whether
    "Save page" carries them. Real recordings would also want leading silence
    trimmed automatically, and maybe a per-layer nudge for feel.
-5. **Hosting**, so the iPad can open the page from an address. Set up as
-   GitHub Pages: `.github/workflows/pages.yml` runs the checks, builds the
-   page and publishes it to https://randir6.github.io/RanDAW/ on every push
-   to the default branch. It needs the repo public and Settings -> Pages ->
-   Source set to "GitHub Actions".
-6. Small ones: more drawings were floated (a scrolling timeline like a DAW's
+5. Small ones: more drawings were floated (a scrolling timeline like a DAW's
    arrangement view).
 
 **Done since parking:** loops are now exactly the tempo's length, and every
 example is a whole number of its pattern's repeats -- see PHASES.md, "Exact
-loops".
+loops". The page is hosted: `.github/workflows/pages.yml` runs the checks,
+builds the page and publishes it to https://randir6.github.io/RanDAW/ on
+every push to `main`.
 
 ### Picking it up again
 
 ```bash
-git checkout claude/polyrhythm-vision-setup-jfos3r
+git checkout main
 cd web
 node build.js      # -> dist/randaw.html; open it in a browser
 npm test           # 153 checks; the browser ones need Chromium (CHROMIUM=path)

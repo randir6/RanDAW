@@ -3,7 +3,7 @@
 // The part of an address after "#" never leaves the browser -- it is not sent
 // to the server -- so a link like
 //
-//   https://randir6.github.io/RanDAW/#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT54V
+//   https://randir6.github.io/RanDAW/#tresillo.submarine-dreamlike-frivolous.93zBpVYcgWzT44Mb
 //
 // opens the page and then the piece written after the "#". Nothing is
 // stored anywhere: the link is the piece. Sending the link shares it, a
